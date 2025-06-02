@@ -1,0 +1,51 @@
+pipeline:
+  name: "Essay Analysis - Social Class & AI Rating"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+data:
+  text_column: "text"
+  id_column: "essay_id"
+  outcomes:
+    - name: "social_class"
+      display_name: "Social Class (ASC)"
+      type: "ordinal"
+      range: [1, 5]
+      default_thresholds:
+        low_value: 2
+        high_value: 4
+    
+    - name: "ai_rating"
+      display_name: "AI Rating"
+      type: "continuous"
+      range: [1, 10]
+      default_thresholds:
+        low_percentile: 25
+        high_percentile: 75
+
+analysis:
+  pca_components: 200
+  umap_dimensions: 3
+  umap_n_neighbors: 30
+  umap_min_dist: 0.1
+  # Adjusted for ~9,500 essays to get 10-20 topics
+  hdbscan_min_cluster_size: 20  # ~0.2% of data, allows for many granular topics
+  hdbscan_min_samples: 5        # Less conservative, allows more flexible cluster shapes
+  dml_top_pcs: null  # Auto-select
+  dml_n_folds: 5
+  xgb_n_estimators: 100
+  xgb_max_depth: 5
+  batch_size: 32
+  max_text_length: 512
+
+visualization:
+  title: "Essay Embedding Analysis: Social Class & AI Ratings"
+  point_size: 3.0
+  default_opacity: 0.7
+  essay_font_size: 20
+  auto_rotate_speed: 2
+  transition_speed: 0.2
+  topic_text_size: 18
+  topic_opacity: 0.8
+
+output_dir: "./output"
+checkpoint_dir: "./checkpoints"

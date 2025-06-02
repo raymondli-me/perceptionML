@@ -1,0 +1,108 @@
+<div id="controls" class="collapsed">
+    <div class="collapse-btn" onclick="toggleControlsCollapse()">
+        <span id="collapse-icon">▶</span>
+    </div>
+    <div class="control-group">
+        <label>
+            <input type="checkbox" id="auto-rotate" checked> Auto-rotate
+        </label>
+        <div>
+            Speed: <input type="range" id="rotate-speed" min="0.1" max="5" step="0.1" 
+                   value="2" style="width: 100px;">
+        </div>
+    </div>
+    <div class="control-group">
+        <label>Point Opacity:</label>
+        <input type="range" id="point-opacity" min="0.1" max="1" step="0.1" 
+               value="{{ config.visualization.default_opacity }}" style="width: 100px;">
+        <span id="opacity-val">{{ config.visualization.default_opacity }}</span>
+    </div>
+    <div class="control-group">
+        <label>Point Size:</label>
+        <input type="range" id="point-size" min="0.5" max="3" step="0.1" 
+               value="1" style="width: 100px;">
+        <span id="size-val">1</span>
+    </div>
+    <div class="control-group">
+        <label>Text BG Opacity:</label>
+        <input type="range" id="text-opacity" min="0.1" max="1" step="0.05" value="0.25" style="width: 100px;">
+        <span id="text-opacity-val">0.25</span>
+    </div>
+    <div class="control-group">
+        <label>Text Font Size:</label>
+        <input type="range" id="text-font-size" min="6" max="72" step="2" 
+               value="{{ config.visualization.essay_font_size }}" style="width: 100px;">
+        <span id="font-size-val">{{ config.visualization.essay_font_size }}</span>px
+    </div>
+    <div class="control-group">
+        <label>Text Height:</label>
+        <input type="range" id="text-height" min="5" max="90" step="5" value="35" style="width: 100px;"
+               oninput="updateTextHeight(this.value); document.getElementById('text-height-val').textContent = this.value;">
+        <span id="text-height-val">35</span>%
+    </div>
+    <div class="control-group">
+        <label>Transition Speed:</label>
+        <input type="range" id="transition-speed" min="0.01" max="3" step="0.01" 
+               value="0.2" style="width: 100px;">
+        <span id="transition-val">0.2</span>s
+    </div>
+    <div class="control-group">
+        <label>Principal Component Analysis:</label>
+        <select id="pc-select" onchange="handlePCSelectChange()" style="width: 100%;">
+            <option value="">Select a PC...</option>
+            {% for i in range(200) %}
+            <option value="{{ i }}" {% if i == 0 %}selected{% endif %}>PC{{ i }}</option>
+            {% endfor %}
+        </select>
+        <label style="margin-top: 8px; display: block;">
+            <input type="checkbox" id="show-pc-stats" onchange="togglePCStatsBox()"> Show Advanced PC Stats
+        </label>
+    </div>
+    {% if has_dml %}
+    <div class="control-group">
+        <label>
+            <input type="checkbox" id="toggle-dml" onchange="toggleDMLTable()"> Show DML Stats
+        </label>
+    </div>
+    {% endif %}
+    <div class="control-group">
+        <label>
+            <input type="checkbox" id="toggle-topic-stats" onchange="toggleTopicStatsPanel()"> Show Topic Stats
+        </label>
+    </div>
+    <div class="control-group">
+        <label>
+            <input type="checkbox" id="toggle-topics" onchange="updateTopicVisibility()"> Hide Topics
+        </label>
+    </div>
+    <div class="control-group">
+        <label>Visible Topics (Closest):</label>
+        <input type="range" id="topic-count" min="1" max="100" value="10" step="1" style="width: 100px;" 
+               oninput="updateTopicVisibility(); document.getElementById('topic-count-val').textContent = this.value;">
+        <span id="topic-count-val">10</span>
+    </div>
+    <div class="control-group">
+        <label>Topic Text Size:</label>
+        <input type="range" id="topic-text-size" min="1" max="8" 
+               value="4" step="0.5" style="width: 100px;" 
+               oninput="updateTopicTextSize(); document.getElementById('topic-text-size-val').textContent = this.value;">
+        <span id="topic-text-size-val">4</span>
+    </div>
+    <div class="control-group">
+        <label>Topic Label Opacity:</label>
+        <input type="range" id="topic-opacity" min="0.1" max="1" step="0.1" 
+               value="1" style="width: 100px;" 
+               oninput="updateTopicOpacity(); document.getElementById('topic-opacity-val').textContent = this.value;">
+        <span id="topic-opacity-val">1</span>
+    </div>
+    <div class="control-group">
+        <label>
+            <input type="checkbox" id="topic-labels-front" onchange="updateTopicLayering()"> Labels Behind Points
+        </label>
+    </div>
+    <div class="control-group">
+        <label for="topic-depth-effect">Label Depth Effect</label>
+        <input type="range" id="topic-depth-effect" min="0" max="1" step="0.1" value="0.7">
+        <span id="topic-depth-val">0.7</span>
+    </div>
+</div>

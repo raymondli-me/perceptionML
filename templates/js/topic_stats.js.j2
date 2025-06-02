@@ -1,0 +1,140 @@
+// Topic Statistics Display Functions
+
+function populateTopicStats() {
+    const content = document.getElementById('topic-stats-content');
+    if (!content || !topicStatsData) {
+        if (content) {
+            content.innerHTML = '<p>No topic statistics available.</p>';
+        }
+        return;
+    }
+    
+    let html = '';
+    
+    // Title
+    html += '<h4 style="margin-top: 0;">Topic Profile Statistics (Top/Bottom 10%)</h4>';
+    
+    // Get outcome names
+    const xOutcome = outcomesConfig[1]?.name || 'x';
+    const yOutcome = outcomesConfig[0]?.name || 'y';
+    
+    // Sort topics by max impact probability
+    const sortedTopics = [...topicStatsData].sort((a, b) => {
+        // Use the pre-calculated max_impact_prob if available, otherwise calculate
+        const maxA = a.max_impact_prob ? a.max_impact_prob * 100 : Math.max(
+            a[`pct_${xOutcome}_high`] || 0,
+            a[`pct_${xOutcome}_low`] || 0,
+            a[`pct_${yOutcome}_high`] || 0,
+            a[`pct_${yOutcome}_low`] || 0
+        );
+        const maxB = b.max_impact_prob ? b.max_impact_prob * 100 : Math.max(
+            b[`pct_${xOutcome}_high`] || 0,
+            b[`pct_${xOutcome}_low`] || 0,
+            b[`pct_${yOutcome}_high`] || 0,
+            b[`pct_${yOutcome}_low`] || 0
+        );
+        return maxB - maxA;
+    });
+    
+    // Create table
+    html += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;">';
+    html += '<thead>';
+    html += '<tr style="border-bottom: 2px solid #666;">';
+    html += '<th style="text-align: left; padding: 8px; width: 30%;">Topic (Keywords)</th>';
+    html += '<th style="text-align: center; padding: 8px;">Size</th>';
+    html += `<th style="text-align: center; padding: 8px;">% High ${outcomesConfig[1]?.display_name || 'X'}</th>`;
+    html += `<th style="text-align: center; padding: 8px;">% Low ${outcomesConfig[1]?.display_name || 'X'}</th>`;
+    html += `<th style="text-align: center; padding: 8px;">% High ${outcomesConfig[0]?.display_name || 'Y'}</th>`;
+    html += `<th style="text-align: center; padding: 8px;">% Low ${outcomesConfig[0]?.display_name || 'Y'}</th>`;
+    html += '</tr>';
+    html += '</thead>';
+    html += '<tbody>';
+    
+    sortedTopics.forEach((topic, index) => {
+        // Extract keywords from label
+        const keywords = topic.label || topic.keywords || `Topic ${topic.topic_id || index}`;
+        const shortKeywords = keywords.split(',').slice(0, 3).join(', ');
+        
+        html += '<tr style="border-bottom: 1px solid #444;">';
+        
+        // Topic keywords
+        html += `<td style="padding: 8px;" title="${keywords}">${shortKeywords}</td>`;
+        
+        // Size
+        html += `<td style="text-align: center; padding: 8px;">${topic.size || 0}</td>`;
+        
+        // Get outcome names
+        const xOutcome = outcomesConfig[1]?.name || 'x';
+        const yOutcome = outcomesConfig[0]?.name || 'y';
+        
+        // % High X
+        const pctHighX = topic[`pct_${xOutcome}_high`] || 0;
+        html += `<td style="text-align: center; padding: 8px; ${getPercentageStyle(pctHighX)}">${pctHighX.toFixed(1)}%</td>`;
+        
+        // % Low X
+        const pctLowX = topic[`pct_${xOutcome}_low`] || 0;
+        html += `<td style="text-align: center; padding: 8px; ${getPercentageStyle(pctLowX)}">${pctLowX.toFixed(1)}%</td>`;
+        
+        // % High Y
+        const pctHighY = topic[`pct_${yOutcome}_high`] || 0;
+        html += `<td style="text-align: center; padding: 8px; ${getPercentageStyle(pctHighY)}">${pctHighY.toFixed(1)}%</td>`;
+        
+        // % Low Y
+        const pctLowY = topic[`pct_${yOutcome}_low`] || 0;
+        html += `<td style="text-align: center; padding: 8px; ${getPercentageStyle(pctLowY)}">${pctLowY.toFixed(1)}%</td>`;
+        
+        html += '</tr>';
+    });
+    
+    html += '</tbody>';
+    html += '</table>';
+    
+    // Footnotes
+    html += '<div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; font-size: 11px; color: #999;">';
+    
+    // Get threshold values if available
+    const xName = outcomesConfig[1]?.display_name || 'X';
+    const yName = outcomesConfig[0]?.display_name || 'Y';
+    
+    html += '<p style="margin: 5px 0;"><strong>Note:</strong></p>';
+    html += '<ul style="margin: 5px 0; padding-left: 20px;">';
+    
+    // Show thresholds if available
+    if (outcomesConfig[1]?.thresholds) {
+        const xHigh = outcomesConfig[1].thresholds.high;
+        const xLow = outcomesConfig[1].thresholds.low;
+        html += `<li>High ${xName}: Top 10% (>${xHigh ? xHigh.toFixed(2) : 'P90'})</li>`;
+        html += `<li>Low ${xName}: Bottom 10% (<${xLow ? xLow.toFixed(2) : 'P10'})</li>`;
+    } else {
+        html += `<li>High ${xName}: Top 10%</li>`;
+        html += `<li>Low ${xName}: Bottom 10%</li>`;
+    }
+    
+    if (outcomesConfig[0]?.thresholds) {
+        const yHigh = outcomesConfig[0].thresholds.high;
+        const yLow = outcomesConfig[0].thresholds.low;
+        html += `<li>High ${yName}: Top 10% (>${yHigh ? yHigh.toFixed(2) : 'P90'})</li>`;
+        html += `<li>Low ${yName}: Bottom 10% (<${yLow ? yLow.toFixed(2) : 'P10'})</li>`;
+    } else {
+        html += `<li>High ${yName}: Top 10%</li>`;
+        html += `<li>Low ${yName}: Bottom 10%</li>`;
+    }
+    
+    html += '<li>Topics ranked by highest percentage in any extreme group</li>';
+    html += '<li>Percentages are color-coded: <span style="color: #ff5252;">Red (>30%)</span>, <span style="color: #ff9800;">Orange (20-30%)</span>, <span style="color: #ffeb3b;">Yellow (15-20%)</span></li>';
+    html += '</ul>';
+    html += '</div>';
+    
+    content.innerHTML = html;
+}
+
+function getPercentageStyle(pct) {
+    if (pct >= 30) {
+        return 'color: #ff5252; font-weight: bold;'; // Red for very high
+    } else if (pct >= 20) {
+        return 'color: #ff9800; font-weight: bold;'; // Orange for high
+    } else if (pct >= 15) {
+        return 'color: #ffeb3b;'; // Yellow for moderate
+    }
+    return ''; // Default color for low percentages
+}

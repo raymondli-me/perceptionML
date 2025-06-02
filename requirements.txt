@@ -1,0 +1,46 @@
+# PerceptionML Requirements
+# All versions pinned for maximum reproducibility
+# Generated on 2025-06-01
+
+# Core scientific computing
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.15.3
+scikit-learn==1.5.2
+statsmodels==0.14.4
+
+# Deep learning and embeddings
+torch==2.6.0
+torchaudio==2.6.0
+torchvision==0.21.0
+transformers==4.42.4
+sentence-transformers==4.1.0
+accelerate==1.7.0
+safetensors==0.5.3
+tokenizers==0.19.1
+huggingface-hub==0.32.2
+
+# Dimensionality reduction and clustering
+umap-learn==0.5.7
+hdbscan==0.8.40
+
+# Machine learning
+xgboost==3.0.1
+shap==0.43.0
+
+# Visualization
+matplotlib==3.10.3
+seaborn==0.13.2
+
+# Web and templating
+jinja2==3.1.6
+
+# Configuration and CLI
+pyyaml==6.0.2
+click==8.1.8
+
+# Progress bars
+tqdm==4.67.1
+
+# Optional: For GPU monitoring (not strictly required)
+# nvidia-ml-py==12.560.30
