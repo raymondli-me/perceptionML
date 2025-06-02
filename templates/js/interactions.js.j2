@@ -244,12 +244,23 @@ function updateFromPercentiles(outcomeName) {
     const outcome = outcomesConfig.find(o => o.name === outcomeName);
     if (!outcome) return;
     
-    const lowPct = parseFloat(document.getElementById(`${outcomeName}-low-pct`).value);
-    const highPct = parseFloat(document.getElementById(`${outcomeName}-high-pct`).value);
+    // Skip zero_presence mode outcomes as they don't have threshold controls
+    if (outcome.mode === 'zero_presence') return;
+    
+    const lowPctElement = document.getElementById(`${outcomeName}-low-pct`);
+    const highPctElement = document.getElementById(`${outcomeName}-high-pct`);
+    
+    // Check if elements exist (they won't for zero_presence mode)
+    if (!lowPctElement || !highPctElement) return;
+    
+    const lowPct = parseFloat(lowPctElement.value);
+    const highPct = parseFloat(highPctElement.value);
     
     // Update the input fields to match sliders
-    document.getElementById(`${outcomeName}-low-pct-input`).value = lowPct;
-    document.getElementById(`${outcomeName}-high-pct-input`).value = highPct;
+    const lowPctInput = document.getElementById(`${outcomeName}-low-pct-input`);
+    const highPctInput = document.getElementById(`${outcomeName}-high-pct-input`);
+    if (lowPctInput) lowPctInput.value = lowPct;
+    if (highPctInput) highPctInput.value = highPct;
     
     // Calculate actual values from percentiles
     const sortedValues = data.map(d => d[outcomeName]).sort((a, b) => a - b);
@@ -260,12 +271,20 @@ function updateFromPercentiles(outcomeName) {
     const highValue = sortedValues[highIdx];
     
     // Update the value inputs
-    document.getElementById(`${outcomeName}-low-val`).value = outcome.type === 'continuous' ? lowValue.toFixed(1) : lowValue;
-    document.getElementById(`${outcomeName}-high-val`).value = outcome.type === 'continuous' ? highValue.toFixed(1) : highValue;
+    const lowValElement = document.getElementById(`${outcomeName}-low-val`);
+    const highValElement = document.getElementById(`${outcomeName}-high-val`);
+    if (lowValElement && lowValue !== undefined) {
+        lowValElement.value = outcome.type === 'continuous' ? lowValue.toFixed(1) : lowValue;
+    }
+    if (highValElement && highValue !== undefined) {
+        highValElement.value = outcome.type === 'continuous' ? highValue.toFixed(1) : highValue;
+    }
     
     // Update the percentile displays
-    document.getElementById(`${outcomeName}-low-pct-display`).textContent = lowPct;
-    document.getElementById(`${outcomeName}-high-pct-display`).textContent = highPct;
+    const lowPctDisplay = document.getElementById(`${outcomeName}-low-pct-display`);
+    const highPctDisplay = document.getElementById(`${outcomeName}-high-pct-display`);
+    if (lowPctDisplay) lowPctDisplay.textContent = lowPct;
+    if (highPctDisplay) highPctDisplay.textContent = highPct;
     
     // Update the global thresholds
     outcome.thresholds.low = lowValue;
@@ -280,8 +299,17 @@ function updateFromValues(outcomeName) {
     const outcome = outcomesConfig.find(o => o.name === outcomeName);
     if (!outcome) return;
     
-    const lowValue = parseFloat(document.getElementById(`${outcomeName}-low-val`).value);
-    const highValue = parseFloat(document.getElementById(`${outcomeName}-high-val`).value);
+    // Skip zero_presence mode outcomes as they don't have threshold controls
+    if (outcome.mode === 'zero_presence') return;
+    
+    const lowValElement = document.getElementById(`${outcomeName}-low-val`);
+    const highValElement = document.getElementById(`${outcomeName}-high-val`);
+    
+    // Check if elements exist
+    if (!lowValElement || !highValElement) return;
+    
+    const lowValue = parseFloat(lowValElement.value);
+    const highValue = parseFloat(highValElement.value);
     
     // Calculate percentiles from values
     const sortedValues = data.map(d => d[outcomeName]).sort((a, b) => a - b);
@@ -299,14 +327,22 @@ function updateFromValues(outcomeName) {
     }
     
     // Update the percentile sliders and inputs
-    document.getElementById(`${outcomeName}-low-pct`).value = Math.round(lowPct);
-    document.getElementById(`${outcomeName}-high-pct`).value = Math.round(highPct);
-    document.getElementById(`${outcomeName}-low-pct-input`).value = Math.round(lowPct);
-    document.getElementById(`${outcomeName}-high-pct-input`).value = Math.round(highPct);
+    const lowPctSlider = document.getElementById(`${outcomeName}-low-pct`);
+    const highPctSlider = document.getElementById(`${outcomeName}-high-pct`);
+    const lowPctInput = document.getElementById(`${outcomeName}-low-pct-input`);
+    const highPctInput = document.getElementById(`${outcomeName}-high-pct-input`);
+    
+    if (lowPctSlider) lowPctSlider.value = Math.round(lowPct);
+    if (highPctSlider) highPctSlider.value = Math.round(highPct);
+    if (lowPctInput) lowPctInput.value = Math.round(lowPct);
+    if (highPctInput) highPctInput.value = Math.round(highPct);
     
     // Update the percentile displays
-    document.getElementById(`${outcomeName}-low-pct-display`).textContent = Math.round(lowPct);
-    document.getElementById(`${outcomeName}-high-pct-display`).textContent = Math.round(highPct);
+    const lowPctDisplay = document.getElementById(`${outcomeName}-low-pct-display`);
+    const highPctDisplay = document.getElementById(`${outcomeName}-high-pct-display`);
+    
+    if (lowPctDisplay) lowPctDisplay.textContent = Math.round(lowPct);
+    if (highPctDisplay) highPctDisplay.textContent = Math.round(highPct);
     
     // Update the global thresholds
     outcome.thresholds.low = lowValue;
@@ -320,6 +356,10 @@ function updateFromValues(outcomeName) {
 function updatePercentileFromInput(outcomeName, type) {
     const input = document.getElementById(`${outcomeName}-${type}-pct-input`);
     const slider = document.getElementById(`${outcomeName}-${type}-pct`);
+    
+    // Check if elements exist
+    if (!input || !slider) return;
+    
     slider.value = input.value;
     updateFromPercentiles(outcomeName);
 }

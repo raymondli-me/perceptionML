@@ -127,8 +127,12 @@ def create_auto_config(data_path: str, sample_size: Optional[int] = None, cli_pa
     """Create automatic configuration from data file."""
     cli_params = cli_params or {}
     
-    # Read sample of data
+    # Read sample of data for detection
     df = pd.read_csv(data_path, nrows=1000)  # Sample for detection
+    
+    # Get actual row count
+    with open(data_path, 'r') as f:
+        actual_rows = sum(1 for line in f) - 1  # Subtract header
     
     # Use CLI parameters if provided, otherwise detect
     if cli_params.get('text_column'):
@@ -231,7 +235,7 @@ def create_auto_config(data_path: str, sample_size: Optional[int] = None, cli_pa
     click.echo(f"{'='*70}")
     
     click.echo(f"\n📊 Dataset: {Path(data_path).name}")
-    click.echo(f"   Rows: {len(df):,}")
+    click.echo(f"   Total rows: {actual_rows:,}")
     
     click.echo(f"\n📝 Column Detection:")
     click.echo(f"   Text variable: '{text_col}'")

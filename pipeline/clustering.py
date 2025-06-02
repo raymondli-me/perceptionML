@@ -287,10 +287,14 @@ class TopicModeler:
                     max_prob = max(max_prob, topic_present_rate)
                     
                 else:
-                    # Original continuous mode logic
-                    # Count extreme values
-                    n_high = np.sum(outcome_values > threshold['high'])
-                    n_low = np.sum(outcome_values < threshold['low'])
+                    # Continuous mode: Use fixed 10th/90th percentiles (like PCA stats)
+                    # NOT the visual thresholds
+                    outcome_p90 = np.percentile(outcome_values, 90)
+                    outcome_p10 = np.percentile(outcome_values, 10)
+                    
+                    # Count extreme values using fixed percentiles
+                    n_high = np.sum(outcome_values >= outcome_p90)
+                    n_low = np.sum(outcome_values <= outcome_p10)
                     
                     # Calculate probabilities
                     prob_high = n_high / cluster_size

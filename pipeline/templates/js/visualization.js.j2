@@ -381,6 +381,10 @@ init();
 
 // Initialize categories and counts after scene is ready
 setTimeout(() => {
+    // Initialize threshold values for continuous mode
+    if (typeof initializeThresholds === 'function') {
+        initializeThresholds();
+    }
     updateCategories();
     // Notify that scene is ready for topic visibility updates
     if (typeof updateTopicVisibility === 'function') {

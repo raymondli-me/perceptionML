@@ -338,7 +338,6 @@ class TextEmbeddingPipeline:
         
         All values are true probabilities between 0 and 1.
         """
-        from sklearn.linear_model import LogisticRegression
         from sklearn.preprocessing import StandardScaler
         
         pc_effects = {}
@@ -407,67 +406,40 @@ class TextEmbeddingPipeline:
                     effects[f'{outcome_name}_low_diff'] = float(((1 - high_pc_present) - (1 - low_pc_present)) * 100)
                     
                 else:
-                    # Original continuous mode logic
-                    # Create binary labels for high/low
-                    y_high = (outcome_values > thresh['high']).astype(int)
-                    y_low = (outcome_values < thresh['low']).astype(int)
+                    # Continuous mode: Use fixed percentiles and simple empirical rates
+                    pc_values = pca_features[:, pc_idx]
+                    p90 = np.percentile(pc_values, 90)
+                    p10 = np.percentile(pc_values, 10)
                     
-                    # Check if we have at least 2 classes
-                    n_high = np.sum(y_high)
-                    n_low = np.sum(y_low)
-                    n_total = len(y_high)
+                    high_pc_mask = pc_values >= p90  # Top 10% of PC values
+                    low_pc_mask = pc_values <= p10   # Bottom 10% of PC values
                     
-                    if len(np.unique(y_high)) < 2:
-                        # If no variation, calculate base rates for top 10% vs bottom 10% PC values
-                        pc_values = pca_features[:, pc_idx]
-                        p90 = np.percentile(pc_values, 90)
-                        p10 = np.percentile(pc_values, 10)
-                        
-                        high_pc_mask = pc_values >= p90  # Top 10%
-                        low_pc_mask = pc_values <= p10   # Bottom 10%
-                        
-                        # Base rate of high outcome in top/bottom PC groups
-                        base_rate_high_pc = np.sum(y_high[high_pc_mask]) / np.sum(high_pc_mask) if np.sum(high_pc_mask) > 0 else 0
-                        base_rate_low_pc = np.sum(y_high[low_pc_mask]) / np.sum(low_pc_mask) if np.sum(low_pc_mask) > 0 else 0
-                        
-                        effects[f'{outcome_name}_high_if_high'] = base_rate_high_pc
-                        effects[f'{outcome_name}_high_if_low'] = base_rate_low_pc
-                        effects[f'{outcome_name}_high_diff'] = base_rate_high_pc - base_rate_low_pc
-                    else:
-                        # Train model for high
-                        model_high = LogisticRegression(max_iter=1000, random_state=42)
-                        model_high.fit(X_scaled, y_high)
-                        prob_high_if_high = model_high.predict_proba(test_scaled[0:1])[0, 1]
-                        prob_high_if_low = model_high.predict_proba(test_scaled[1:2])[0, 1]
-                        effects[f'{outcome_name}_high_if_high'] = float(prob_high_if_high)
-                        effects[f'{outcome_name}_high_if_low'] = float(prob_high_if_low)
-                        effects[f'{outcome_name}_high_diff'] = float(prob_high_if_high - prob_high_if_low)
+                    # Use fixed percentiles for outcome thresholds (independent of visual thresholds)
+                    # Using 90th percentile for "high" and 10th percentile for "low"
+                    outcome_p90 = np.percentile(outcome_values, 90)
+                    outcome_p10 = np.percentile(outcome_values, 10)
                     
-                    if len(np.unique(y_low)) < 2:
-                        # If no variation, calculate base rates for top 10% vs bottom 10% PC values
-                        pc_values = pca_features[:, pc_idx]
-                        p90 = np.percentile(pc_values, 90)
-                        p10 = np.percentile(pc_values, 10)
-                        
-                        high_pc_mask = pc_values >= p90  # Top 10%
-                        low_pc_mask = pc_values <= p10   # Bottom 10%
-                        
-                        # Base rate of low outcome in top/bottom PC groups
-                        base_rate_high_pc = np.sum(y_low[high_pc_mask]) / np.sum(high_pc_mask) if np.sum(high_pc_mask) > 0 else 0
-                        base_rate_low_pc = np.sum(y_low[low_pc_mask]) / np.sum(low_pc_mask) if np.sum(low_pc_mask) > 0 else 0
-                        
-                        effects[f'{outcome_name}_low_if_high'] = base_rate_high_pc
-                        effects[f'{outcome_name}_low_if_low'] = base_rate_low_pc
-                        effects[f'{outcome_name}_low_diff'] = base_rate_high_pc - base_rate_low_pc
-                    else:
-                        # Train model for low
-                        model_low = LogisticRegression(max_iter=1000, random_state=42)
-                        model_low.fit(X_scaled, y_low)
-                        prob_low_if_high = model_low.predict_proba(test_scaled[0:1])[0, 1]
-                        prob_low_if_low = model_low.predict_proba(test_scaled[1:2])[0, 1]
-                        effects[f'{outcome_name}_low_if_high'] = float(prob_low_if_high)
-                        effects[f'{outcome_name}_low_if_low'] = float(prob_low_if_low)
-                        effects[f'{outcome_name}_low_diff'] = float(prob_low_if_high - prob_low_if_low)
+                    # Define high/low outcomes based on fixed percentiles
+                    high_outcome = outcome_values >= outcome_p90  # Top 10% of outcome
+                    low_outcome = outcome_values <= outcome_p10   # Bottom 10% of outcome
+                    
+                    # Calculate simple empirical rates
+                    # High outcome rates
+                    high_outcome_if_high_pc = np.mean(high_outcome[high_pc_mask]) if np.sum(high_pc_mask) > 0 else 0
+                    high_outcome_if_low_pc = np.mean(high_outcome[low_pc_mask]) if np.sum(low_pc_mask) > 0 else 0
+                    
+                    # Low outcome rates  
+                    low_outcome_if_high_pc = np.mean(low_outcome[high_pc_mask]) if np.sum(high_pc_mask) > 0 else 0
+                    low_outcome_if_low_pc = np.mean(low_outcome[low_pc_mask]) if np.sum(low_pc_mask) > 0 else 0
+                    
+                    # Store as percentages
+                    effects[f'{outcome_name}_high_if_high'] = float(high_outcome_if_high_pc * 100)
+                    effects[f'{outcome_name}_high_if_low'] = float(high_outcome_if_low_pc * 100)
+                    effects[f'{outcome_name}_high_diff'] = float((high_outcome_if_high_pc - high_outcome_if_low_pc) * 100)
+                    
+                    effects[f'{outcome_name}_low_if_high'] = float(low_outcome_if_high_pc * 100)
+                    effects[f'{outcome_name}_low_if_low'] = float(low_outcome_if_low_pc * 100)
+                    effects[f'{outcome_name}_low_diff'] = float((low_outcome_if_high_pc - low_outcome_if_low_pc) * 100)
             
             pc_effects[pc_idx] = effects
             self._pc_global_effects_cache[pc_idx] = effects
@@ -660,12 +632,12 @@ class TextEmbeddingPipeline:
                     else:
                         # Continuous mode for Y
                         pc_data['extreme_analysis']['high_y'] = {
-                            'if_high_pc': effects.get(f'{y_name}_high_if_high', 0) * 100,
-                            'if_low_pc': effects.get(f'{y_name}_high_if_low', 0) * 100
+                            'if_high_pc': effects.get(f'{y_name}_high_if_high', 0),
+                            'if_low_pc': effects.get(f'{y_name}_high_if_low', 0)
                         }
                         pc_data['extreme_analysis']['low_y'] = {
-                            'if_high_pc': effects.get(f'{y_name}_low_if_high', 0) * 100,
-                            'if_low_pc': effects.get(f'{y_name}_low_if_low', 0) * 100
+                            'if_high_pc': effects.get(f'{y_name}_low_if_high', 0),
+                            'if_low_pc': effects.get(f'{y_name}_low_if_low', 0)
                         }
                     
                     if x_mode == 'zero_presence':
@@ -682,12 +654,12 @@ class TextEmbeddingPipeline:
                     else:
                         # Continuous mode for X
                         pc_data['extreme_analysis']['high_x'] = {
-                            'if_high_pc': effects.get(f'{x_name}_high_if_high', 0) * 100,
-                            'if_low_pc': effects.get(f'{x_name}_high_if_low', 0) * 100
+                            'if_high_pc': effects.get(f'{x_name}_high_if_high', 0),
+                            'if_low_pc': effects.get(f'{x_name}_high_if_low', 0)
                         }
                         pc_data['extreme_analysis']['low_x'] = {
-                            'if_high_pc': effects.get(f'{x_name}_low_if_high', 0) * 100,
-                            'if_low_pc': effects.get(f'{x_name}_low_if_low', 0) * 100
+                            'if_high_pc': effects.get(f'{x_name}_low_if_high', 0),
+                            'if_low_pc': effects.get(f'{x_name}_low_if_low', 0)
                         }
                     
                     # Add mode info
@@ -698,20 +670,20 @@ class TextEmbeddingPipeline:
                     # Original continuous mode for both
                     pc_data['extreme_analysis'] = {
                         'high_y': {
-                            'if_high_pc': effects.get(f'{y_name}_high_if_high', 0) * 100,
-                            'if_low_pc': effects.get(f'{y_name}_high_if_low', 0) * 100
+                            'if_high_pc': effects.get(f'{y_name}_high_if_high', 0),
+                            'if_low_pc': effects.get(f'{y_name}_high_if_low', 0)
                         },
                         'low_y': {
-                            'if_high_pc': effects.get(f'{y_name}_low_if_high', 0) * 100,
-                            'if_low_pc': effects.get(f'{y_name}_low_if_low', 0) * 100
+                            'if_high_pc': effects.get(f'{y_name}_low_if_high', 0),
+                            'if_low_pc': effects.get(f'{y_name}_low_if_low', 0)
                         },
                         'high_x': {
-                            'if_high_pc': effects.get(f'{x_name}_high_if_high', 0) * 100,
-                            'if_low_pc': effects.get(f'{x_name}_high_if_low', 0) * 100
+                            'if_high_pc': effects.get(f'{x_name}_high_if_high', 0),
+                            'if_low_pc': effects.get(f'{x_name}_high_if_low', 0)
                         },
                         'low_x': {
-                            'if_high_pc': effects.get(f'{x_name}_low_if_high', 0) * 100,
-                            'if_low_pc': effects.get(f'{x_name}_low_if_low', 0) * 100
+                            'if_high_pc': effects.get(f'{x_name}_low_if_high', 0),
+                            'if_low_pc': effects.get(f'{x_name}_low_if_low', 0)
                         },
                         'y_mode': 'continuous',
                         'x_mode': 'continuous'

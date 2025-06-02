@@ -102,26 +102,11 @@ function populateTopicStats() {
     html += '<p style="margin: 5px 0;"><strong>Note:</strong></p>';
     html += '<ul style="margin: 5px 0; padding-left: 20px;">';
     
-    // Show thresholds if available
-    if (outcomesConfig[1]?.thresholds) {
-        const xHigh = outcomesConfig[1].thresholds.high;
-        const xLow = outcomesConfig[1].thresholds.low;
-        html += `<li>High ${xName}: Top 10% (>${xHigh ? xHigh.toFixed(2) : 'P90'})</li>`;
-        html += `<li>Low ${xName}: Bottom 10% (<${xLow ? xLow.toFixed(2) : 'P10'})</li>`;
-    } else {
-        html += `<li>High ${xName}: Top 10%</li>`;
-        html += `<li>Low ${xName}: Bottom 10%</li>`;
-    }
-    
-    if (outcomesConfig[0]?.thresholds) {
-        const yHigh = outcomesConfig[0].thresholds.high;
-        const yLow = outcomesConfig[0].thresholds.low;
-        html += `<li>High ${yName}: Top 10% (>${yHigh ? yHigh.toFixed(2) : 'P90'})</li>`;
-        html += `<li>Low ${yName}: Bottom 10% (<${yLow ? yLow.toFixed(2) : 'P10'})</li>`;
-    } else {
-        html += `<li>High ${yName}: Top 10%</li>`;
-        html += `<li>Low ${yName}: Bottom 10%</li>`;
-    }
+    // For continuous mode, we always use fixed 10th/90th percentiles
+    html += `<li>High ${xName}: Top 10% (≥90th percentile)</li>`;
+    html += `<li>Low ${xName}: Bottom 10% (≤10th percentile)</li>`;
+    html += `<li>High ${yName}: Top 10% (≥90th percentile)</li>`;
+    html += `<li>Low ${yName}: Bottom 10% (≤10th percentile)</li>`;
     
     html += '<li>Topics ranked by highest percentage in any extreme group</li>';
     

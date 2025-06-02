@@ -272,8 +272,8 @@ class DataLoader:
         return {
             'low': float(low_val),
             'high': float(high_val),
-            'low_percentile': outcome.default_thresholds.get('low_percentile', 10),
-            'high_percentile': outcome.default_thresholds.get('high_percentile', 90),
+            'low_percentile': outcome.default_thresholds.get('low_percentile', 25),
+            'high_percentile': outcome.default_thresholds.get('high_percentile', 75),
             'mode': 'continuous'
         }
     
