@@ -20,7 +20,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 # Using manual parameters for maximum topic granularity
 python3 run_pipeline.py \
     --config configs/anger_zero_presence.yaml \
-    --data data_emotion/emotion_families/anger_family.csv \
+    --data data_github/anger_family.csv \
     --output anger_zero_presence_nvidia_test.html \
     --export-csv \
     --export-dir exports_anger_nvidia_test \
