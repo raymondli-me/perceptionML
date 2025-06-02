@@ -3,9 +3,10 @@
 
 import json
 import numpy as np
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, PackageLoader, ChoiceLoader
 from pathlib import Path
 from typing import Dict, List, Any
+import importlib.resources as pkg_resources
 
 from .config import PipelineConfig
 
@@ -15,8 +16,23 @@ class VisualizationGenerator:
     
     def __init__(self, config: PipelineConfig):
         self.config = config
-        self.template_dir = Path(__file__).parent.parent / 'templates'
-        self.env = Environment(loader=FileSystemLoader(self.template_dir))
+        
+        # Try multiple loaders: package first, then file system fallback
+        loaders = []
+        
+        # Try to load from package
+        try:
+            loaders.append(PackageLoader('pipeline', 'templates'))
+        except ImportError:
+            pass
+        
+        # Add file system loader as fallback
+        template_dir = Path(__file__).parent / 'templates'
+        if template_dir.exists():
+            loaders.append(FileSystemLoader(template_dir))
+        
+        # Use ChoiceLoader to try multiple sources
+        self.env = Environment(loader=ChoiceLoader(loaders))
         
     def generate_html(self, data: Dict[str, Any], output_path: str) -> str:
         """Generate the complete HTML visualization."""

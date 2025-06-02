@@ -118,24 +118,7 @@ class AutoParameterSystem:
             self.decisions.append(decision)
             return cli_value
             
-        # 2. Config file value (skip if None)
-        if self.config and hasattr(self.config.analysis, param_name):
-            config_value = getattr(self.config.analysis, param_name)
-            if config_value is not None:  # Only use config value if not None
-                decision = ParameterDecision(
-                    parameter=param_name,
-                    value=config_value,
-                    source='config',
-                    reason='Specified in configuration file'
-                )
-                # Still compute auto value for comparison
-                if auto_mode:
-                    auto_value = self._compute_auto_value(param_name)
-                    decision.alternatives = {'auto_would_be': auto_value}
-                self.decisions.append(decision)
-                return config_value
-            
-        # 3. Auto mode (if enabled)
+        # 2. Auto mode (if enabled, takes priority over config)
         if auto_mode:
             auto_value = self._compute_auto_value(param_name)
             source = 'super-auto' if self.super_auto_mode else 'auto'
@@ -147,6 +130,19 @@ class AutoParameterSystem:
             )
             self.decisions.append(decision)
             return auto_value
+            
+        # 3. Config file value (only if auto mode is disabled)
+        if self.config and hasattr(self.config.analysis, param_name):
+            config_value = getattr(self.config.analysis, param_name)
+            if config_value is not None:  # Only use config value if not None
+                decision = ParameterDecision(
+                    parameter=param_name,
+                    value=config_value,
+                    source='config',
+                    reason='Specified in configuration file'
+                )
+                self.decisions.append(decision)
+                return config_value
             
         # 4. Default fallback
         default_value = self._get_default_value(param_name)
@@ -294,9 +290,12 @@ class AutoParameterSystem:
         
         # Use auto_cluster_mode if specified
         if self.auto_cluster_mode:
-            if self.auto_cluster_mode == 'many':
-                cluster_percent = 0.002  # 0.2%
-                min_size, max_size = 15, 50
+            if self.auto_cluster_mode == 'descriptions':
+                # Ultra-aggressive settings for maximum clusters
+                return 10
+            elif self.auto_cluster_mode == 'many':
+                # Use fixed value of 20 for maximum granularity
+                return 20
             elif self.auto_cluster_mode == 'medium':
                 cluster_percent = 0.005  # 0.5%
                 min_size, max_size = 30, 100
@@ -304,9 +303,8 @@ class AutoParameterSystem:
                 cluster_percent = 0.01   # 1%
                 min_size, max_size = 50, 200
         else:
-            # Default to 'medium' behavior
-            cluster_percent = 0.005
-            min_size, max_size = 30, 100
+            # Default to 'many' behavior (20)
+            return 20
             
         suggested_size = int(n_samples * cluster_percent)
         return max(min_size, min(suggested_size, max_size))
@@ -324,11 +322,29 @@ class AutoParameterSystem:
             # Compute it if not yet decided
             min_cluster_size = self._compute_min_cluster_size()
             
-        # min_samples is typically 10-25% of min_cluster_size
+        # Special handling for descriptions mode
+        if self.auto_cluster_mode == 'descriptions':
+            return 2  # Very permissive
+        # For min_cluster_size of 20, use min_samples of 3
+        elif min_cluster_size == 20:
+            return 3
+        # Otherwise min_samples is typically 10-25% of min_cluster_size
         return max(5, int(min_cluster_size * 0.15))
         
     def _compute_umap_neighbors(self) -> int:
-        """Compute UMAP n_neighbors based on dataset size."""
+        """Compute UMAP n_neighbors based on dataset size and clustering mode."""
+        # For 'descriptions' mode, use 5 for extremely tight local structure
+        if self.auto_cluster_mode == 'descriptions':
+            return 5
+        # For 'many' mode, use 10 for tighter local structure
+        elif self.auto_cluster_mode == 'many':
+            return 10
+        
+        # For default (which is now 'many' behavior), also use 10
+        if not self.auto_cluster_mode:
+            return 10
+            
+        # Otherwise use dataset-size based selection
         n_samples = self.profile.n_samples
         
         if n_samples < 1000:
@@ -342,12 +358,15 @@ class AutoParameterSystem:
             
     def _compute_umap_min_dist(self) -> float:
         """Compute UMAP min_dist based on clustering mode."""
-        if self.auto_cluster_mode == 'many':
-            return 0.0  # Tight clusters
+        if self.auto_cluster_mode == 'descriptions':
+            return 0.0  # Maximum separation (same as 'many')
+        elif self.auto_cluster_mode == 'many':
+            return 0.0  # Maximum separation
         elif self.auto_cluster_mode == 'few':
             return 0.3  # Loose clusters
         else:
-            return 0.1  # Medium separation
+            # Default to 'many' behavior (0.0)
+            return 0.0
             
     def _compute_dml_folds(self) -> int:
         """Compute DML n_folds based on dataset size."""
@@ -462,11 +481,10 @@ class AutoParameterSystem:
             return f"Alpha range {value[0]}-{value[-1]} for {self.profile.size_category} dataset"
         
         reasons = {
-            'hdbscan_min_cluster_size': f"Set to {value} ({value/self.profile.n_samples*100:.1f}% of data) "
-                                       f"for {self.auto_cluster_mode or 'medium'} clustering",
-            'hdbscan_min_samples': f"Set to {value} (15% of min_cluster_size) for flexibility",
-            'umap_n_neighbors': f"Set to {value} based on {self.profile.size_category} dataset size",
-            'umap_min_dist': f"Set to {value} for {self.auto_cluster_mode or 'medium'} cluster separation",
+            'hdbscan_min_cluster_size': f"Set to {value} for {self.auto_cluster_mode or 'default'} clustering",
+            'hdbscan_min_samples': f"Set to {value} for {self.auto_cluster_mode or 'default'} clustering",
+            'umap_n_neighbors': f"Set to {value} for {self.auto_cluster_mode or 'default'} clustering",
+            'umap_min_dist': f"Set to {value} for {self.auto_cluster_mode or 'default'} clustering",
             'dml_n_folds': f"Set to {value} folds for {self.profile.size_category} dataset",
             'xgb_n_estimators': f"Set to {value} trees for {self.profile.size_category} dataset",
             'xgb_max_depth': f"Set to {value} to balance complexity and overfitting",
@@ -511,7 +529,32 @@ class AutoParameterSystem:
             lines.append("🤖 Mode: AUTO (ML parameters static, clustering dynamic)")
         
         if self.auto_cluster_mode:
-            lines.append(f"Clustering target: {self.auto_cluster_mode.upper()}")
+            lines.append(f"🎯 Clustering target: {self.auto_cluster_mode.upper()}")
+            
+        # Show outcome mode if available
+        if hasattr(self.config, 'data') and hasattr(self.config.data, 'outcomes'):
+            outcome_modes = []
+            warnings = []
+            for outcome in self.config.data.outcomes[:2]:  # Y and X variables
+                mode = getattr(outcome, 'mode', None)
+                mode_display = mode if mode else 'not set'
+                outcome_modes.append(f"{outcome.name}: {mode_display}")
+                
+                # Check if we should warn about zeros
+                if hasattr(self, '_outcome_zero_fractions') and outcome.name in self._outcome_zero_fractions:
+                    zero_frac = self._outcome_zero_fractions[outcome.name]
+                    if mode == 'continuous' and zero_frac > 0.3:
+                        warnings.append(f"⚠️  {outcome.name} has {zero_frac:.0%} zeros but using continuous mode!")
+                        
+            if outcome_modes:
+                lines.append(f"📊 Outcome modes: {', '.join(outcome_modes)}")
+            
+            if warnings:
+                lines.append("")
+                for warning in warnings:
+                    lines.append(warning)
+                lines.append("   Consider using --outcome-mode zero_presence")
+        
         lines.append("")
             
         # Group parameters by category
@@ -542,77 +585,49 @@ class AutoParameterSystem:
                         }.get(decision.source, '•')
                         
                         line = f"  {source_emoji} {decision.parameter}: {decision.value}"
-                        if decision.source == 'auto':
-                            line += f" ({decision.reason})"
-                        elif decision.source == 'super-auto':
-                            line += f" (dynamically optimized: {decision.reason})"
-                        elif decision.source == 'config' and decision.alternatives:
-                            auto_val = decision.alternatives.get('auto_would_be')
-                            super_auto_val = decision.alternatives.get('super_auto_would_be')
-                            if super_auto_val and super_auto_val != decision.value:
-                                line += f" [super-auto would use: {super_auto_val}]"
-                            elif auto_val and auto_val != decision.value:
-                                line += f" [auto would select: {auto_val}]"
-                        elif decision.source == 'default' and decision.alternatives:
-                            super_auto_val = decision.alternatives.get('super_auto_would_be')
-                            if super_auto_val and super_auto_val != decision.value:
-                                # Format list values nicely
-                                if isinstance(super_auto_val, list):
-                                    line += f" [super-auto: {super_auto_val[0]}-{super_auto_val[-1]}]"
-                                else:
-                                    line += f" [super-auto: {super_auto_val}]"
+                        # Only add brief context for auto-selected parameters
+                        if decision.source in ['auto', 'super-auto']:
+                            # Shorten the reason for clarity
+                            if 'descriptions' in decision.reason:
+                                line += " (descriptions mode)"
+                            elif 'many' in decision.reason:
+                                line += " (many topics mode)"
+                            elif 'dataset' in decision.reason.lower():
+                                line += f" (for {self.profile.size_category.lower()} dataset)"
                         lines.append(line)
                 lines.append("")
-                
-        # Add education messages
-        if self.education_messages:
-            lines.append("💡 Insights:")
-            for msg in self.education_messages:
-                lines.append(f"  {msg}")
-            lines.append("")
-            
-        # Add suggestions
-        lines.extend([
-            "📝 Suggestions:",
-            f"  • Your dataset size ({self.profile.n_samples:,}) is well-suited for this analysis",
-            f"  • Consider --auto-cluster [few|medium|many] to adjust clustering granularity",
-            f"  • Use --export-csv to save all results for further analysis"
-        ])
-        
-        # Add super-auto suggestion if not in super-auto mode
-        if not self.super_auto_mode and self.super_auto_suggestions:
-            lines.extend([
-                "",
-                "🚀 Super-Auto Mode:",
-                "  For full ML hyperparameter optimization, use: --super-auto",
-                "  This would dynamically adjust:"
-            ])
-            
-            # Show what would be different
-            different_params = []
-            for param, info in self.super_auto_suggestions.items():
-                current_val = None
-                for decision in self.decisions:
-                    if decision.parameter == param:
-                        current_val = decision.value
-                        break
-                        
-                if current_val and current_val != info['value']:
-                    if isinstance(info['value'], list):
-                        different_params.append(f"    • {param}: {info['value'][0]}-{info['value'][-1]} "
-                                              f"(currently: {current_val[0] if isinstance(current_val, list) else current_val})")
-                    else:
-                        different_params.append(f"    • {param}: {info['value']} (currently: {current_val})")
-                        
-            if different_params:
-                lines.extend(different_params)
-            else:
-                lines.append("    • All ML parameters are already at optimal values")
-                
-        lines.append("")
         
         return "\n".join(lines)
         
+    def select_all_parameters(self, cli_overrides: dict = None) -> None:
+        """Select all parameters based on mode and apply to config."""
+        cli_overrides = cli_overrides or {}
+        
+        # Parameters to select
+        clustering_params = ['hdbscan_min_cluster_size', 'hdbscan_min_samples']
+        umap_params = ['umap_n_neighbors', 'umap_min_dist']
+        ml_params = ['dml_n_folds', 'xgb_n_estimators', 'xgb_max_depth']
+        
+        # Select all parameters
+        for param in clustering_params + umap_params + ml_params:
+            cli_value = cli_overrides.get(param)
+            self.select_parameter(param, cli_value=cli_value, auto_mode=True)
+    
+    def apply_to_config(self) -> None:
+        """Apply auto-selected parameters to the config object."""
+        if not self.config:
+            return
+            
+        # Apply all auto-selected parameters to the config
+        for decision in self.decisions:
+            if decision.source in ['auto', 'super-auto', 'cli']:
+                param_name = decision.parameter
+                value = decision.value
+                
+                # Map parameter names to config attributes
+                if hasattr(self.config.analysis, param_name):
+                    setattr(self.config.analysis, param_name, value)
+    
     def export_metadata(self) -> dict:
         """Export all decisions and metadata for reproducibility."""
         return {

@@ -4,8 +4,9 @@
 import yaml
 import os
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
+import importlib.resources as pkg_resources
 
 
 @dataclass
@@ -55,7 +56,28 @@ class DataConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'DataConfig':
         """Create DataConfig from dictionary."""
-        outcomes = [OutcomeConfig(**o) for o in config_dict['outcomes']]
+        # Create outcomes, handling extra fields like 'synthetic'
+        outcomes = []
+        for o_dict in config_dict['outcomes']:
+            # Extract known fields for OutcomeConfig
+            outcome_fields = {
+                'name': o_dict['name'],
+                'display_name': o_dict['display_name'],
+                'type': o_dict['type'],
+                'range': o_dict.get('range'),
+                'categories': o_dict.get('categories'),
+                'default_thresholds': o_dict.get('default_thresholds', {}),
+                'mode': o_dict.get('mode'),
+                'mode_auto_detected': o_dict.get('mode_auto_detected', False)
+            }
+            outcome = OutcomeConfig(**outcome_fields)
+            
+            # Add any extra fields as attributes
+            for key, value in o_dict.items():
+                if key not in outcome_fields:
+                    setattr(outcome, key, value)
+            
+            outcomes.append(outcome)
         
         # Parse control variables if present
         control_vars = None
@@ -68,7 +90,8 @@ class DataConfig:
                     # Support simple string format
                     control_vars.append(ControlVariable(name=cv))
         
-        return cls(
+        # Create instance with all fields from config_dict
+        instance = cls(
             text_column=config_dict['text_column'],
             id_column=config_dict['id_column'],
             outcomes=outcomes,
@@ -76,6 +99,12 @@ class DataConfig:
             sample_seed=config_dict.get('sample_seed'),
             control_variables=control_vars
         )
+        
+        # Add any extra fields like generate_id
+        if 'generate_id' in config_dict:
+            instance.generate_id = config_dict['generate_id']
+            
+        return instance
 
 
 @dataclass
@@ -242,27 +271,8 @@ class PipelineConfig:
     @classmethod
     def from_dict(cls, config_dict: dict) -> 'PipelineConfig':
         """Create config from dictionary."""
-        # Parse data configuration with outcomes
-        outcomes = [OutcomeConfig(**o) for o in config_dict['data']['outcomes']]
-        
-        # Parse control variables
-        control_vars = None
-        if 'control_variables' in config_dict['data'] and config_dict['data']['control_variables']:
-            control_vars = []
-            for cv in config_dict['data']['control_variables']:
-                if isinstance(cv, dict):
-                    control_vars.append(ControlVariable(**cv))
-                else:
-                    control_vars.append(ControlVariable(name=cv))
-        
-        data_config = DataConfig(
-            text_column=config_dict['data']['text_column'],
-            id_column=config_dict['data']['id_column'],
-            outcomes=outcomes,
-            sample_size=config_dict['data'].get('sample_size'),
-            sample_seed=config_dict['data'].get('sample_seed'),
-            control_variables=control_vars
-        )
+        # Use DataConfig.from_dict to handle all fields properly
+        data_config = DataConfig.from_dict(config_dict['data'])
         
         # Parse analysis configuration
         analysis_config = AnalysisConfig(**config_dict.get('analysis', {}))
@@ -305,3 +315,67 @@ def validate_config(config: PipelineConfig) -> None:
         raise ValueError("UMAP dimensions must be 2 or 3")
     
     print(f"✓ Configuration '{config.name}' validated successfully")
+
+
+def load_config(config_path: Union[str, Path]) -> dict:
+    """Load configuration from YAML file.
+    
+    Args:
+        config_path: Path to YAML config file or name of bundled config
+        
+    Returns:
+        Configuration dictionary
+    """
+    # If it's just a filename without path, try to load from package
+    if isinstance(config_path, str) and '/' not in config_path and '\\' not in config_path:
+        # Try to load from package resources
+        try:
+            with pkg_resources.open_text('pipeline.configs', config_path) as f:
+                return yaml.safe_load(f)
+        except (FileNotFoundError, ModuleNotFoundError):
+            pass
+    
+    # Otherwise load from file path
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+
+
+def save_config(config: Union[dict, PipelineConfig], output_path: Union[str, Path]) -> None:
+    """Save configuration to YAML file.
+    
+    Args:
+        config: Configuration dictionary or PipelineConfig object
+        output_path: Path to save YAML file
+    """
+    if isinstance(config, PipelineConfig):
+        config_dict = config.to_dict()
+    else:
+        config_dict = config
+    
+    with open(output_path, 'w') as f:
+        yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
+
+
+def get_default_config() -> dict:
+    """Get the default configuration."""
+    try:
+        # Try to load from package
+        with pkg_resources.open_text('pipeline.configs', 'default.yaml') as f:
+            return yaml.safe_load(f)
+    except (FileNotFoundError, ModuleNotFoundError):
+        # Fallback to hardcoded minimal config
+        return {
+            'pipeline': {
+                'name': 'default',
+                'embedding_model': 'sentence-transformers/all-MiniLM-L6-v2'
+            },
+            'data': {
+                'text_column': 'text',
+                'id_column': 'id',
+                'outcomes': []
+            },
+            'analysis': {},
+            'visualization': {},
+            'output_dir': 'output',
+            'checkpoint_dir': 'checkpoints'
+        }

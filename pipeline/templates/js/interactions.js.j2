@@ -1,0 +1,1550 @@
+// Interaction functions
+function setColorMode(mode) {
+    colorMode = mode;
+    
+    // Update button states
+    document.querySelectorAll('.color-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    
+    // Update point colors
+    updatePointColors();
+}
+
+function updatePointColors() {
+    // If we're in category focus mode and not showing all, use special coloring
+    if (typeof currentFocusCategory !== 'undefined' && currentFocusCategory !== 'all') {
+        updateCategoryFocusColors();
+        return;
+    }
+    
+    const colors = points.geometry.getAttribute('color');
+    
+    data.forEach((point, i) => {
+        const color = getPointColor(point);
+        colors.setXYZ(i, color.r, color.g, color.b);
+    });
+    
+    colors.needsUpdate = true;
+}
+
+function updateCategories() {
+    updatePointColors();
+    updateCounts();
+    updateLegend();
+    
+    // Update sorted category indices for gallery navigation
+    if (typeof categoryIndices !== 'undefined' && typeof positions !== 'undefined') {
+        Object.keys(categoryIndices).forEach(category => {
+            sortedCategoryIndices[category] = sortByProximity(categoryIndices[category], positions);
+        });
+    }
+}
+
+function updateLegend() {
+    const legendDiv = document.getElementById('legend');
+    if (!legendDiv) return;
+    
+    let html = '<h4 style="margin-top: 0;">Category Legend</h4>';
+    
+    // Check if we're in zero-presence mode
+    const isZeroPresenceMode = outcomesConfig.some(o => o.mode === 'zero_presence');
+    
+    let categories, labels;
+    
+    if (isZeroPresenceMode) {
+        // Zero-presence mode categories
+        categories = ['both_absent', 'first_present', 'second_present', 'both_present'];
+        labels = {
+            'both_absent': 'Both Absent (0, 0)',
+            'first_present': `${outcomesConfig[0].display_name} Present Only`,
+            'second_present': `${outcomesConfig[1].display_name} Present Only`,
+            'both_present': 'Both Present (>0, >0)'
+        };
+    } else {
+        // Continuous mode categories
+        categories = ['both_high', 'first_high', 'second_high', 'both_low', 'middle'];
+        labels = {
+            'both_high': `High ${outcomesConfig[1].display_name} + High ${outcomesConfig[0].display_name}`,
+            'first_high': `Low ${outcomesConfig[1].display_name} + High ${outcomesConfig[0].display_name}`,
+            'second_high': `High ${outcomesConfig[1].display_name} + Low ${outcomesConfig[0].display_name}`,
+            'both_low': `Low ${outcomesConfig[1].display_name} + Low ${outcomesConfig[0].display_name}`,
+            'middle': 'Middle Range'
+        };
+    }
+    
+    categories.forEach(cat => {
+        const color = categoryColors[cat];
+        if (color) {
+            const rgb = `rgb(${Math.floor(color[0]*255)}, ${Math.floor(color[1]*255)}, ${Math.floor(color[2]*255)})`;
+            html += `<div style="margin: 5px 0; display: flex; align-items: center;">
+                <div style="width: 20px; height: 20px; background: ${rgb}; border: 1px solid #fff; margin-right: 10px;"></div>
+                <span style="font-size: 12px;">${labels[cat]}</span>
+            </div>`;
+        }
+    });
+    
+    legendDiv.innerHTML = html;
+}
+
+function updateCounts() {
+    // Reset category indices
+    Object.keys(categoryIndices).forEach(cat => {
+        categoryIndices[cat] = [];
+    });
+    
+    // Update category counts display
+    const counts = {};
+    Object.keys(categoryColors).forEach(cat => {
+        counts[cat] = 0;
+    });
+    
+    data.forEach((point, index) => {
+        const category = getPointCategory(point);
+        if (counts[category] !== undefined) {
+            counts[category]++;
+            // Add index to categoryIndices
+            if (categoryIndices[category]) {
+                categoryIndices[category].push(index);
+            }
+        }
+        
+        // Special handling for agreement/disagreement categories in zero-presence mode
+        const isZeroPresenceMode = outcomesConfig.some(o => o.mode === 'zero_presence');
+        if (isZeroPresenceMode) {
+            const val1 = point[outcomesConfig[0].name];
+            const val2 = point[outcomesConfig[1].name];
+            const present1 = val1 !== 0;
+            const present2 = val2 !== 0;
+            
+            // Agreement: both zero or both non-zero
+            if (present1 === present2) {
+                if (counts['agreement'] !== undefined) {
+                    counts['agreement']++;
+                    if (categoryIndices['agreement']) {
+                        categoryIndices['agreement'].push(index);
+                    }
+                }
+            } else {
+                // Disagreement: one zero, one non-zero
+                if (counts['disagreement'] !== undefined) {
+                    counts['disagreement']++;
+                    if (categoryIndices['disagreement']) {
+                        categoryIndices['disagreement'].push(index);
+                    }
+                }
+            }
+        }
+    });
+    
+    // Update display
+    let html = '<div style="margin-top: 10px; font-size: 12px;">';
+    
+    // Check if we're in zero-presence mode
+    const isZeroPresenceMode = outcomesConfig.some(o => o.mode === 'zero_presence');
+    
+    if (isZeroPresenceMode) {
+        // Display all 6 counts for zero-presence mode
+        html += `<div style="font-weight: bold; margin-bottom: 5px;">Categories:</div>`;
+        html += `<div>Both Absent: ${counts['both_absent'] || 0}</div>`;
+        html += `<div>${outcomesConfig[0].display_name} Only: ${counts['first_present'] || 0}</div>`;
+        html += `<div>${outcomesConfig[1].display_name} Only: ${counts['second_present'] || 0}</div>`;
+        html += `<div>Both Present: ${counts['both_present'] || 0}</div>`;
+        html += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2);">`;
+        html += `<div style="font-weight: bold; margin-bottom: 5px;">Agreement Status:</div>`;
+        html += `<div>Agreement: ${counts['agreement'] || 0}</div>`;
+        html += `<div>Disagreement: ${counts['disagreement'] || 0}</div>`;
+        html += '</div>';
+    } else {
+        // Display counts for continuous mode
+        const displayOrder = ['both_high', 'first_high', 'second_high', 'both_low', 'middle'];
+        displayOrder.forEach(cat => {
+            if (counts[cat] !== undefined) {
+                html += `<div>${cat}: ${counts[cat]}</div>`;
+            }
+        });
+    }
+    html += '</div>';
+    
+    document.getElementById('counts').innerHTML = html;
+    
+    // Update gallery button counts
+    document.querySelectorAll('.gallery-count').forEach(span => {
+        const category = span.dataset.category;
+        const count = counts[category] || 0;
+        span.textContent = `${count} essays`;
+    });
+}
+
+function toggleInfoCollapse() {
+    const info = document.getElementById('info');
+    const icon = document.getElementById('info-collapse-icon');
+    
+    info.classList.toggle('collapsed');
+    icon.textContent = info.classList.contains('collapsed') ? '▶' : '◀';
+}
+
+function toggleControlsCollapse() {
+    const controls = document.getElementById('controls');
+    const icon = document.getElementById('collapse-icon');
+    
+    if (controls && icon) {
+        controls.classList.toggle('collapsed');
+        icon.textContent = controls.classList.contains('collapsed') ? '▶' : '◀';
+    }
+}
+
+function toggleGalleryControls() {
+    const galleryControls = document.getElementById('gallery-controls');
+    const icon = document.getElementById('gallery-collapse-icon');
+    
+    galleryControls.classList.toggle('collapsed');
+    icon.textContent = galleryControls.classList.contains('collapsed') ? '▼' : '▲';
+}
+
+function toggleColorModePanel() {
+    const colorModePanel = document.getElementById('color-mode-panel');
+    const icon = document.getElementById('color-mode-collapse-icon');
+    
+    colorModePanel.classList.toggle('collapsed');
+    icon.textContent = colorModePanel.classList.contains('collapsed') ? '▼' : '▲';
+}
+
+function applyPreset(preset) {
+    outcomesConfig.forEach(outcome => {
+        let lowPct, highPct;
+        
+        switch (preset) {
+            case 'extremes':
+                lowPct = 10;
+                highPct = 90;
+                break;
+            case 'quartiles':
+                lowPct = 25;
+                highPct = 75;
+                break;
+            case 'median':
+                lowPct = 50;
+                highPct = 50;
+                break;
+        }
+        
+        document.getElementById(`${outcome.name}-low-pct`).value = lowPct;
+        document.getElementById(`${outcome.name}-high-pct`).value = highPct;
+        document.getElementById(`${outcome.name}-low-pct-input`).value = lowPct;
+        document.getElementById(`${outcome.name}-high-pct-input`).value = highPct;
+        
+        updateFromPercentiles(outcome.name);
+    });
+    
+    updateCategories();
+}
+
+function updateFromPercentiles(outcomeName) {
+    const outcome = outcomesConfig.find(o => o.name === outcomeName);
+    if (!outcome) return;
+    
+    const lowPct = parseFloat(document.getElementById(`${outcomeName}-low-pct`).value);
+    const highPct = parseFloat(document.getElementById(`${outcomeName}-high-pct`).value);
+    
+    // Update the input fields to match sliders
+    document.getElementById(`${outcomeName}-low-pct-input`).value = lowPct;
+    document.getElementById(`${outcomeName}-high-pct-input`).value = highPct;
+    
+    // Calculate actual values from percentiles
+    const sortedValues = data.map(d => d[outcomeName]).sort((a, b) => a - b);
+    const lowIdx = Math.floor(sortedValues.length * lowPct / 100);
+    const highIdx = Math.floor(sortedValues.length * highPct / 100);
+    
+    const lowValue = sortedValues[lowIdx];
+    const highValue = sortedValues[highIdx];
+    
+    // Update the value inputs
+    document.getElementById(`${outcomeName}-low-val`).value = outcome.type === 'continuous' ? lowValue.toFixed(1) : lowValue;
+    document.getElementById(`${outcomeName}-high-val`).value = outcome.type === 'continuous' ? highValue.toFixed(1) : highValue;
+    
+    // Update the percentile displays
+    document.getElementById(`${outcomeName}-low-pct-display`).textContent = lowPct;
+    document.getElementById(`${outcomeName}-high-pct-display`).textContent = highPct;
+    
+    // Update the global thresholds
+    outcome.thresholds.low = lowValue;
+    outcome.thresholds.high = highValue;
+    outcome.thresholds.low_percentile = lowPct;
+    outcome.thresholds.high_percentile = highPct;
+    
+    updateCategories();
+}
+
+function updateFromValues(outcomeName) {
+    const outcome = outcomesConfig.find(o => o.name === outcomeName);
+    if (!outcome) return;
+    
+    const lowValue = parseFloat(document.getElementById(`${outcomeName}-low-val`).value);
+    const highValue = parseFloat(document.getElementById(`${outcomeName}-high-val`).value);
+    
+    // Calculate percentiles from values
+    const sortedValues = data.map(d => d[outcomeName]).sort((a, b) => a - b);
+    
+    let lowPct = 0;
+    let highPct = 0;
+    
+    for (let i = 0; i < sortedValues.length; i++) {
+        if (sortedValues[i] <= lowValue) {
+            lowPct = (i / sortedValues.length) * 100;
+        }
+        if (sortedValues[i] <= highValue) {
+            highPct = (i / sortedValues.length) * 100;
+        }
+    }
+    
+    // Update the percentile sliders and inputs
+    document.getElementById(`${outcomeName}-low-pct`).value = Math.round(lowPct);
+    document.getElementById(`${outcomeName}-high-pct`).value = Math.round(highPct);
+    document.getElementById(`${outcomeName}-low-pct-input`).value = Math.round(lowPct);
+    document.getElementById(`${outcomeName}-high-pct-input`).value = Math.round(highPct);
+    
+    // Update the percentile displays
+    document.getElementById(`${outcomeName}-low-pct-display`).textContent = Math.round(lowPct);
+    document.getElementById(`${outcomeName}-high-pct-display`).textContent = Math.round(highPct);
+    
+    // Update the global thresholds
+    outcome.thresholds.low = lowValue;
+    outcome.thresholds.high = highValue;
+    outcome.thresholds.low_percentile = Math.round(lowPct);
+    outcome.thresholds.high_percentile = Math.round(highPct);
+    
+    updateCategories();
+}
+
+function updatePercentileFromInput(outcomeName, type) {
+    const input = document.getElementById(`${outcomeName}-${type}-pct-input`);
+    const slider = document.getElementById(`${outcomeName}-${type}-pct`);
+    slider.value = input.value;
+    updateFromPercentiles(outcomeName);
+}
+
+// Gallery state variables are defined in visualization.js.j2
+// to ensure they're initialized before the animate() function is called
+// This includes: galleryMode, currentGalleryCategory, currentGalleryIndex, savedAutoRotate
+
+// Animation state variables are also defined in visualization.js.j2
+
+// Category indices are also defined in visualization.js.j2
+
+function calculateDistance(positions, idx1, idx2) {
+    const dx = positions[idx1 * 3] - positions[idx2 * 3];
+    const dy = positions[idx1 * 3 + 1] - positions[idx2 * 3 + 1];
+    const dz = positions[idx1 * 3 + 2] - positions[idx2 * 3 + 2];
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function sortByProximity(indices, positions) {
+    if (indices.length <= 1) return indices;
+    
+    const sorted = [];
+    const remaining = [...indices];
+    
+    sorted.push(remaining.shift());
+    
+    while (remaining.length > 0) {
+        const currentIdx = sorted[sorted.length - 1];
+        let nearestIdx = 0;
+        let nearestDist = Infinity;
+        
+        for (let i = 0; i < remaining.length; i++) {
+            const dist = calculateDistance(positions, currentIdx, remaining[i]);
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestIdx = i;
+            }
+        }
+        
+        sorted.push(remaining.splice(nearestIdx, 1)[0]);
+    }
+    
+    return sorted;
+}
+
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function animateToPosition(targetCameraPos, targetLookAt, camera, controls) {
+    isAnimating = true;
+    animationStartTime = Date.now();
+    animationDuration = parseFloat(document.getElementById('transition-speed').value) * 1000;
+    
+    animationStart.cameraPos.copy(camera.position);
+    animationStart.targetPos.copy(controls.target);
+    
+    animationEnd.cameraPos.copy(targetCameraPos);
+    animationEnd.targetPos.copy(targetLookAt);
+}
+
+// Function to show essay in the text display
+function showEssay(point, index) {
+    const textDisplay = document.getElementById('text-display');
+    const headerContent = document.getElementById('text-header-content');
+    const textContent = document.getElementById('text-content');
+    const pcAnalysis = document.getElementById('pc-analysis');
+    
+    if (!textDisplay || !point) return;
+    
+    // Get the actual color of the point from current visualization
+    const pointColor = getPointColor(point);
+    const bgOpacity = parseFloat(document.getElementById('text-opacity')?.value || 0.25);
+    const bgColor = `rgba(${Math.floor(pointColor.r * 255)}, ${Math.floor(pointColor.g * 255)}, ${Math.floor(pointColor.b * 255)}, ${bgOpacity})`;
+    
+    // Update background and border colors
+    textDisplay.style.backgroundColor = bgColor;
+    
+    // Make border color more visible by increasing brightness
+    const r = Math.floor(pointColor.r * 255);
+    const g = Math.floor(pointColor.g * 255);
+    const b = Math.floor(pointColor.b * 255);
+    
+    // Calculate brightness and adjust for better visibility
+    const brightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+    let borderR, borderG, borderB;
+    
+    if (brightness < 0.5) {
+        // For dark colors, make border lighter
+        borderR = Math.min(255, r + 100);
+        borderG = Math.min(255, g + 100);
+        borderB = Math.min(255, b + 100);
+    } else {
+        // For bright colors, use the color at full opacity
+        borderR = r;
+        borderG = g;
+        borderB = b;
+    }
+    
+    const borderRGB = `rgb(${borderR}, ${borderG}, ${borderB})`;
+    textDisplay.style.setProperty('border', `2px solid ${borderRGB}`, 'important');
+    
+    // Also update the header border color
+    const header = document.getElementById('text-display-header');
+    if (header) {
+        header.style.setProperty('border-bottom-color', `rgba(${borderR}, ${borderG}, ${borderB}, 0.3)`, 'important');
+    }
+    
+    // Prepare PC info for header
+    let pcInfo = '';
+    if (point.pc_info && point.pc_info.length > 0) {
+        const topPCs = point.pc_info.slice(0, 6); // Get top 6 PCs
+        pcInfo = '<span style="border-left: 1px solid rgba(255,255,255,0.2); padding-left: 20px; margin-left: 10px;">Top PCs (SHAP X, Y): ';
+        pcInfo += topPCs.map(pc => {
+            // Get SHAP values for both outcomes
+            const shapX = pc[`contribution_${outcomesConfig[1]?.name}`]?.toFixed(3) || '0';
+            const shapY = pc[`contribution_${outcomesConfig[0]?.name}`]?.toFixed(3) || '0';
+            return `${pc.pc} (${shapX}, ${shapY})`;
+        }).join(' | ');
+        pcInfo += '</span>';
+    }
+    
+    // Update header content with larger font
+    const xName = outcomesConfig[1]?.display_name || 'X';
+    const yName = outcomesConfig[0]?.display_name || 'Y';
+    headerContent.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 20px; font-size: 16px;">
+            <strong>ID: ${point.id}</strong>
+            <span>${xName}: ${point[outcomesConfig[1]?.name]?.toFixed(2) || 'N/A'}</span>
+            <span>${yName}: ${point[outcomesConfig[0]?.name]?.toFixed(2) || 'N/A'}</span>
+            ${point.cluster_id !== undefined && point.cluster_id !== -1 ? 
+                `<span>Topic: ${point.cluster_id}</span>` : ''}
+            ${pcInfo}
+        </div>
+    `;
+    
+    // Update text content
+    const fontSize = parseInt(document.getElementById('text-font-size')?.value || 14);
+    textContent.style.fontSize = fontSize + 'px';
+    textContent.innerHTML = `<p>${point.text || 'No text available'}</p>`;
+    
+    // Hide PC analysis section since we're showing it in the header
+    if (pcAnalysis) {
+        pcAnalysis.style.display = 'none';
+    }
+    
+    // Show the display
+    textDisplay.style.display = 'block';
+}
+
+function navigateToEssay(index, data, positions, categories, categoryColors) {
+    const d = data[index];
+    const category = categories[index];
+    
+    const indices = sortedCategoryIndices[currentGalleryCategory];
+    document.getElementById('gallery-info').textContent = 
+        `Essay ${currentGalleryIndex + 1} of ${indices.length}`;
+    
+    const targetPosition = new THREE.Vector3(
+        positions[index * 3],
+        positions[index * 3 + 1],
+        positions[index * 3 + 2]
+    );
+    
+    const distance = 60;  // More zoomed in for gallery mode
+    const angle = Date.now() * 0.0001;
+    const cameraPos = new THREE.Vector3(
+        targetPosition.x + distance * Math.cos(angle),
+        targetPosition.y + distance * 0.5,
+        targetPosition.z + distance * Math.sin(angle)
+    );
+    
+    // Get camera and controls from visualization
+    if (typeof camera !== 'undefined' && typeof controls !== 'undefined') {
+        animateToPosition(cameraPos, targetPosition, camera, controls);
+    }
+    
+    // Display essay using the new function
+    showEssay(d, index);
+}
+
+// Gallery functions
+function startGallery(category, event) {
+    if (sortedCategoryIndices[category].length === 0) {
+        alert('No essays in this category with current thresholds');
+        return;
+    }
+    
+    galleryMode = true;
+    currentGalleryCategory = category;
+    currentGalleryIndex = 0;
+    returningToOverview = false;
+    
+    // Save auto-rotate state and disable
+    if (typeof controls !== 'undefined') {
+        savedAutoRotate = controls.autoRotate;
+        controls.autoRotate = false;
+        document.getElementById('auto-rotate').checked = false;
+    }
+    
+    document.querySelectorAll('.gallery-button').forEach(btn => btn.classList.remove('active'));
+    if (event && event.target) {
+        event.target.classList.add('active');
+    } else {
+        // Find the button by category and activate it
+        document.querySelectorAll('.gallery-button').forEach(btn => {
+            if (btn.onclick && btn.onclick.toString().includes(category)) {
+                btn.classList.add('active');
+            }
+        });
+    }
+    document.querySelector('.nav-buttons').style.display = 'flex';
+    
+    // Navigate to first essay in category
+    if (typeof data !== 'undefined' && typeof positions !== 'undefined' && 
+        typeof categories !== 'undefined' && typeof categoryColors !== 'undefined') {
+        navigateToEssay(sortedCategoryIndices[category][0], data, positions, categories, categoryColors);
+    }
+};
+
+function stopGallery() {
+    galleryMode = false;
+    currentGalleryCategory = null;
+    returningToOverview = true;
+    
+    // Restore auto-rotate
+    if (typeof controls !== 'undefined') {
+        controls.autoRotate = savedAutoRotate;
+        document.getElementById('auto-rotate').checked = savedAutoRotate;
+    }
+    
+    // Animate back to overview
+    if (typeof camera !== 'undefined' && typeof controls !== 'undefined' && typeof cloudCenter !== 'undefined') {
+        animateToPosition(
+            new THREE.Vector3(250, 250, 250),
+            new THREE.Vector3(cloudCenter.x, cloudCenter.y, cloudCenter.z),
+            camera,
+            controls
+        );
+    }
+    
+    document.querySelectorAll('.gallery-button').forEach(btn => btn.classList.remove('active'));
+    document.querySelector('.nav-buttons').style.display = 'none';
+    document.getElementById('gallery-info').textContent = '';
+    const textDisplay = document.getElementById('text-display');
+    if (textDisplay) {
+        textDisplay.style.display = 'none';
+    }
+};
+
+function navigateGallery(direction) {
+    if (!galleryMode || !currentGalleryCategory || isAnimating) return;
+    
+    const indices = sortedCategoryIndices[currentGalleryCategory];
+    currentGalleryIndex += direction;
+    
+    if (currentGalleryIndex < 0) currentGalleryIndex = indices.length - 1;
+    if (currentGalleryIndex >= indices.length) currentGalleryIndex = 0;
+    
+    if (typeof data !== 'undefined' && typeof positions !== 'undefined' && 
+        typeof categories !== 'undefined' && typeof categoryColors !== 'undefined') {
+        navigateToEssay(indices[currentGalleryIndex], data, positions, categories, categoryColors);
+    }
+};
+
+// Toggle functions for various panels
+function handlePCSelectChange() {
+    const pcSelect = document.getElementById('pc-select');
+    const selectedPC = pcSelect.value;
+    if (selectedPC) {
+        // Switch to PC gradient mode
+        setColorMode('pc_gradient');
+        
+        // Show PC legend
+        document.getElementById('pc-legend').style.display = 'block';
+        document.getElementById('legend').style.display = 'none';
+        
+        // Update PC name display
+        const pcName = document.getElementById('pc-name');
+        if (pcName) {
+            pcName.textContent = `PC${selectedPC}`;
+        }
+        
+        // Update PCA window if it's open
+        const pcStatsBox = document.getElementById('pc-global-info');
+        if (pcStatsBox && pcStatsBox.style.display === 'block') {
+            populatePCStats();
+        }
+    } else {
+        // Hide PC legend if no PC selected
+        document.getElementById('pc-legend').style.display = 'none';
+        document.getElementById('legend').style.display = 'block';
+    }
+}
+
+function togglePCStatsBox() {
+    const checkbox = document.getElementById('show-pc-stats');
+    const pcStatsBox = document.getElementById('pc-global-info');
+    if (pcStatsBox) {
+        pcStatsBox.style.display = checkbox.checked ? 'block' : 'none';
+        
+        // Populate PC stats if showing
+        if (checkbox.checked) {
+            populatePCStats();
+            bringToFront(pcStatsBox);
+        }
+    }
+}
+
+// populatePCStats is now defined in pca_stats.js.j2
+
+function toggleDMLTable() {
+    const checkbox = document.getElementById('toggle-dml');
+    const dmlTable = document.getElementById('dml-stats-panel');
+    if (dmlTable) {
+        dmlTable.style.display = checkbox.checked ? 'block' : 'none';
+        
+        // Populate DML stats if showing
+        if (checkbox.checked) {
+            populateDMLStats();
+            bringToFront(dmlTable);
+            
+            // Ensure it's properly centered on first show
+            if (dmlTable.style.transform === 'translateX(-50%)') {
+                // Calculate center position
+                const windowWidth = window.innerWidth;
+                const panelWidth = dmlTable.offsetWidth;
+                const leftPos = (windowWidth - panelWidth) / 2;
+                dmlTable.style.left = leftPos + 'px';
+                dmlTable.style.transform = 'none';
+            }
+        }
+    }
+}
+
+// populateDMLStats is now defined in dml_stats.js.j2
+
+function toggleTopicStatsPanel() {
+    const checkbox = document.getElementById('toggle-topic-stats');
+    const topicPanel = document.getElementById('topic-stats-panel');
+    if (topicPanel) {
+        topicPanel.style.display = checkbox.checked ? 'block' : 'none';
+        
+        // Populate topic stats if showing
+        if (checkbox.checked) {
+            populateTopicStats();
+            bringToFront(topicPanel);
+        }
+    }
+}
+
+// populateTopicStats is now defined in topic_stats.js.j2
+
+// Close button functions
+function closePCStats() {
+    document.getElementById('pc-global-info').style.display = 'none';
+    document.getElementById('show-pc-stats').checked = false;
+}
+
+function closeTopicStats() {
+    document.getElementById('topic-stats-panel').style.display = 'none';
+    document.getElementById('toggle-topic-stats').checked = false;
+}
+
+function closeDMLStats() {
+    document.getElementById('dml-stats-panel').style.display = 'none';
+    document.getElementById('toggle-dml').checked = false;
+}
+
+// Z-index management for popup windows
+let highestZIndex = 1002;
+
+function bringToFront(element) {
+    // Remove active class from all popups
+    document.querySelectorAll('.popup-window').forEach(popup => {
+        popup.classList.remove('popup-active');
+    });
+    
+    // Add active class and set z-index
+    element.classList.add('popup-active');
+    element.style.zIndex = ++highestZIndex;
+}
+
+// Disable dragging and resizing - windows are now fixed position
+function makeDraggable(element) {
+    // Do nothing - windows are now fixed position
+    // Just ensure the element has proper cursor
+    element.style.cursor = 'default';
+}
+
+// Initialize draggable windows when DOM is ready
+window.addEventListener('DOMContentLoaded', function() {
+    const draggableWindows = [
+        'pc-global-info',
+        'topic-stats-panel',
+        'dml-stats-panel',
+        'text-display'
+    ];
+    
+    draggableWindows.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            makeDraggable(element);
+            
+            // Also bring to front when clicking anywhere on the window
+            element.addEventListener('click', function(e) {
+                if (!e.target.classList.contains('close-btn')) {
+                    bringToFront(element);
+                }
+            });
+        }
+    });
+});
+
+
+function updateTopicVisibility() {
+    // Check if scene is initialized before proceeding
+    if (typeof scene === 'undefined' || !scene) {
+        console.log('Scene not yet initialized, deferring updateTopicVisibility');
+        return;
+    }
+    // Reset and update visible topics
+    currentVisibleTopicIds.clear();
+    updateVisibleTopics();
+}
+
+function createTopicLabels(count) {
+    // Remove existing labels
+    hideTopicLabels();
+    
+    if (!scene) return;
+    
+    // Create a group for topic labels
+    topicLabelGroup = new THREE.Group();
+    
+    // Take the first 'count' topics
+    const topicsToShow = topicVizData.slice(0, Math.min(count, topicVizData.length));
+    
+    topicsToShow.forEach((topic, index) => {
+        const text = topic.label || topic.keywords || `Topic ${topic.topic_id || index}`;
+        
+        // Create high-resolution canvas for crisp text
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        // Use device pixel ratio for sharp text
+        const dpr = window.devicePixelRatio || 1;
+        const fontSizeElement = document.getElementById('topic-text-size');
+        const fontSize = fontSizeElement ? parseInt(fontSizeElement.value) : 10;
+        const scaledFontSize = fontSize * 8; // Base font size in pixels
+        
+        // Set up font and measure text
+        context.font = `bold ${scaledFontSize}px Arial`;
+        const metrics = context.measureText(text);
+        const textWidth = metrics.width;
+        const textHeight = scaledFontSize * 1.2;
+        
+        // Size canvas to fit text with padding
+        const padding = scaledFontSize * 0.5;
+        canvas.width = (textWidth + padding * 2) * dpr;
+        canvas.height = (textHeight + padding * 2) * dpr;
+        
+        // Scale context for device pixel ratio
+        context.scale(dpr, dpr);
+        
+        // Clear canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Get opacity from slider
+        const opacityElement = document.getElementById('topic-opacity');
+        const opacity = opacityElement ? parseFloat(opacityElement.value) : 0.5;
+        
+        // Draw background rectangle
+        context.fillStyle = `rgba(0, 0, 0, ${opacity * 0.8})`;
+        context.roundRect(padding/2, padding/2, textWidth + padding, textHeight + padding, 8);
+        context.fill();
+        
+        // Set up text rendering for sharpness
+        context.font = `bold ${scaledFontSize}px Arial`;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        
+        // Draw text with outline for visibility
+        const centerX = (textWidth + padding * 2) / 2;
+        const centerY = (textHeight + padding * 2) / 2;
+        
+        // Black outline
+        context.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+        context.lineWidth = scaledFontSize * 0.08;
+        context.strokeText(text, centerX, centerY);
+        
+        // White fill
+        context.fillStyle = 'white';
+        context.fillText(text, centerX, centerY);
+        
+        // Create texture with better filtering
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
+        
+        const spriteMaterial = new THREE.SpriteMaterial({
+            map: texture,
+            opacity: opacity,
+            transparent: true,
+            sizeAttenuation: true  // Allow size to change with distance
+        });
+        
+        const sprite = new THREE.Sprite(spriteMaterial);
+        const x = topic.x || 0;
+        const y = topic.y || 0; 
+        const z = topic.z || 0;
+        sprite.position.set(x, y, z);
+        
+        // Debug: Log first few topic positions
+        if (index < 3) {
+            console.log(`Topic ${topic.topic_id} position:`, {x, y, z}, 'Label:', text);
+        }
+        
+        // Scale sprite based on text size
+        const worldScale = fontSize * 2; // Adjust this multiplier as needed
+        const aspect = (textWidth + padding * 2) / (textHeight + padding * 2);
+        sprite.scale.set(worldScale * aspect, worldScale, 1);
+        
+        topicLabelGroup.add(sprite);
+        topicLabels.push(sprite);
+    });
+    
+    scene.add(topicLabelGroup);
+    updateTopicLayering();
+}
+
+// Update visible topics based on camera distance
+function updateVisibleTopics() {
+    // Check if all required objects are initialized
+    if (typeof camera === 'undefined' || !camera || 
+        typeof topicVizData === 'undefined' || !topicVizData || topicVizData.length === 0 || 
+        typeof scene === 'undefined' || !scene ||
+        typeof renderer === 'undefined' || !renderer) {
+        return;
+    }
+    
+    const showTopicsElement = document.getElementById('toggle-topics');
+    const topicCountElement = document.getElementById('topic-count');
+    
+    if (!showTopicsElement || !topicCountElement) return;
+    
+    const hideTopics = showTopicsElement.checked;  // Inverted logic
+    const topicCount = parseInt(topicCountElement.value);
+    
+    if (hideTopics || topicCount === 0) {
+        hideTopicLabels();
+        currentVisibleTopicIds.clear();
+        return;
+    }
+    
+    // Calculate distances from camera to each topic
+    const topicDistances = topicVizData.map((topic, index) => {
+        const topicPos = new THREE.Vector3(topic.x || 0, topic.y || 0, topic.z || 0);
+        const distance = camera.position.distanceTo(topicPos);
+        return { index, distance, topic };
+    });
+    
+    // Sort by distance and get the N closest
+    topicDistances.sort((a, b) => a.distance - b.distance);
+    const closestTopics = topicDistances.slice(0, topicCount);
+    
+    // Check if the set of visible topics has changed
+    const newVisibleIds = new Set(closestTopics.map(item => item.topic.topic_id));
+    const hasChanged = newVisibleIds.size !== currentVisibleTopicIds.size || 
+                      [...newVisibleIds].some(id => !currentVisibleTopicIds.has(id));
+    
+    if (hasChanged) {
+        // Recreate topic labels with only the closest ones
+        currentVisibleTopicIds = newVisibleIds;
+        createTopicLabelsForClosest(closestTopics);
+    }
+}
+
+// Create topic labels for only the closest topics
+function createTopicLabelsForClosest(closestTopics) {
+    // Remove existing labels
+    hideTopicLabels();
+    
+    if (!scene) return;
+    
+    // Create a group for topic labels
+    topicLabelGroup = new THREE.Group();
+    
+    closestTopics.forEach((item, index) => {
+        const topic = item.topic;
+        const text = topic.label || topic.keywords || `Topic ${topic.topic_id || index}`;
+        
+        // Create high-resolution canvas for crisp text
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        // Use device pixel ratio for sharp text
+        const dpr = window.devicePixelRatio || 1;
+        const fontSizeElement = document.getElementById('topic-text-size');
+        const fontSize = fontSizeElement ? parseInt(fontSizeElement.value) : 10;
+        const scaledFontSize = fontSize * 8; // Base font size in pixels
+        
+        // Set up font and measure text
+        context.font = `bold ${scaledFontSize}px Arial`;
+        const metrics = context.measureText(text);
+        const textWidth = metrics.width;
+        const textHeight = scaledFontSize * 1.2;
+        
+        // Size canvas to fit text with padding
+        const padding = scaledFontSize * 0.5;
+        canvas.width = (textWidth + padding * 2) * dpr;
+        canvas.height = (textHeight + padding * 2) * dpr;
+        
+        // Scale context for device pixel ratio
+        context.scale(dpr, dpr);
+        
+        // Clear canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Get opacity from slider
+        const opacityElement = document.getElementById('topic-opacity');
+        const opacity = opacityElement ? parseFloat(opacityElement.value) : 0.5;
+        
+        // Draw background rectangle
+        context.fillStyle = `rgba(0, 0, 0, ${opacity * 0.8})`;
+        context.roundRect(padding/2, padding/2, textWidth + padding, textHeight + padding, 8);
+        context.fill();
+        
+        // Set up text rendering for sharpness
+        context.font = `bold ${scaledFontSize}px Arial`;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        
+        // Draw text with outline for visibility
+        const centerX = (textWidth + padding * 2) / 2;
+        const centerY = (textHeight + padding * 2) / 2;
+        
+        // Black outline
+        context.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+        context.lineWidth = scaledFontSize * 0.08;
+        context.strokeText(text, centerX, centerY);
+        
+        // White fill
+        context.fillStyle = 'white';
+        context.fillText(text, centerX, centerY);
+        
+        // Create texture with better filtering
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
+        
+        const spriteMaterial = new THREE.SpriteMaterial({
+            map: texture,
+            opacity: opacity,
+            transparent: true,
+            sizeAttenuation: true  // Allow size to change with distance
+        });
+        
+        const sprite = new THREE.Sprite(spriteMaterial);
+        const x = topic.x || 0;
+        const y = topic.y || 0; 
+        const z = topic.z || 0;
+        sprite.position.set(x, y, z);
+        
+        // Scale sprite based on text size
+        const worldScale = fontSize * 2; // Adjust this multiplier as needed
+        const aspect = (textWidth + padding * 2) / (textHeight + padding * 2);
+        sprite.scale.set(worldScale * aspect, worldScale, 1);
+        
+        topicLabelGroup.add(sprite);
+        topicLabels.push(sprite);
+    });
+    
+    scene.add(topicLabelGroup);
+    updateTopicLayering();
+}
+
+function hideTopicLabels() {
+    // Check if scene is initialized and topicLabelGroup exists
+    if (typeof scene !== 'undefined' && scene && typeof topicLabelGroup !== 'undefined' && topicLabelGroup) {
+        // Dispose of sprite materials and textures
+        topicLabels.forEach(sprite => {
+            if (sprite.material) {
+                if (sprite.material.map) sprite.material.map.dispose();
+                sprite.material.dispose();
+            }
+        });
+        
+        scene.remove(topicLabelGroup);
+        topicLabelGroup = null;
+    }
+    topicLabels = [];
+}
+
+function updateTopicTextSize() {
+    // Check if scene is initialized before proceeding
+    if (typeof scene === 'undefined' || !scene) {
+        return;
+    }
+    // Force update of topic labels with new size
+    currentVisibleTopicIds.clear();
+    updateVisibleTopics();
+}
+
+function updateTopicOpacity() {
+    // Check if scene is initialized before proceeding
+    if (typeof scene === 'undefined' || !scene) {
+        return;
+    }
+    // Force update of topic labels with new opacity
+    currentVisibleTopicIds.clear();
+    updateVisibleTopics();
+}
+
+function updateTopicLayering() {
+    // Check if scene is initialized before proceeding
+    if (typeof scene === 'undefined' || !scene) {
+        return;
+    }
+    const behindPoints = document.getElementById('topic-labels-front').checked;  // Inverted logic
+    const onTop = !behindPoints;  // If checked, labels are behind (not on top)
+    if (topicLabelGroup) {
+        topicLabelGroup.renderOrder = onTop ? 999 : 0;
+        topicLabels.forEach(sprite => {
+            if (sprite.material) {
+                sprite.material.depthTest = !onTop;
+                sprite.material.depthWrite = !onTop;
+            }
+        });
+    }
+}
+
+// Update topic label scaling based on distance from camera
+function updateTopicLabelScaling() {
+    if (!camera || !topicLabels || topicLabels.length === 0) return;
+    
+    // Get depth effect strength from slider (0 = no effect, 1 = full effect)
+    const depthSlider = document.getElementById('topic-depth-effect');
+    const depthStrength = depthSlider ? parseFloat(depthSlider.value) : 0.7;
+    
+    // Scale range based on depth strength
+    const minScale = 1.0 - (0.7 * depthStrength);  // From 1.0 (no effect) to 0.3 (full effect)
+    const maxScale = 1.0 + (0.2 * depthStrength);  // From 1.0 (no effect) to 1.2 (full effect)
+    const minDistance = 100; // Distance at which labels are largest
+    const maxDistance = 400; // Distance at which labels are smallest
+    
+    topicLabels.forEach((sprite, index) => {
+        if (!sprite || !sprite.position) return;
+        
+        // Calculate distance from camera to label
+        const distance = camera.position.distanceTo(sprite.position);
+        
+        // Calculate scale factor based on distance
+        let scaleFactor = 1.0;
+        let t = 0; // Normalized distance value (0 = near, 1 = far)
+        
+        if (distance <= minDistance) {
+            scaleFactor = maxScale;
+            t = 0;
+        } else if (distance >= maxDistance) {
+            scaleFactor = minScale;
+            t = 1;
+        } else {
+            // Linear interpolation between min and max scale
+            t = (distance - minDistance) / (maxDistance - minDistance);
+            scaleFactor = maxScale - t * (maxScale - minScale);
+        }
+        
+        // Get the original scale values (aspect ratio preserved)
+        const originalScaleX = sprite.userData.originalScaleX || sprite.scale.x;
+        const originalScaleY = sprite.userData.originalScaleY || sprite.scale.y;
+        
+        // Store original scale on first run
+        if (!sprite.userData.originalScaleX) {
+            sprite.userData.originalScaleX = sprite.scale.x;
+            sprite.userData.originalScaleY = sprite.scale.y;
+        }
+        
+        // Apply the scale factor
+        sprite.scale.x = originalScaleX * scaleFactor;
+        sprite.scale.y = originalScaleY * scaleFactor;
+        
+        // Optional: Also adjust opacity based on distance for better depth perception
+        if (sprite.material && depthStrength > 0) {
+            // Farther labels are more transparent (only if depth effect is enabled)
+            const baseOpacity = parseFloat(document.getElementById('topic-opacity')?.value || 0.5);
+            const opacityRange = 0.6 * depthStrength; // How much opacity varies with distance
+            const opacityFactor = baseOpacity - (t * opacityRange * baseOpacity);
+            sprite.material.opacity = Math.max(0.2, opacityFactor);
+        }
+    });
+}
+
+// Initialize controls and event listeners
+function initializeControls() {
+    // Auto-rotate checkbox
+    const autoRotateCheckbox = document.getElementById('auto-rotate');
+    if (autoRotateCheckbox) {
+        autoRotateCheckbox.addEventListener('change', function() {
+            controls.autoRotate = this.checked;
+        });
+    }
+    
+    // Rotate speed slider
+    const rotateSpeedSlider = document.getElementById('rotate-speed');
+    if (rotateSpeedSlider) {
+        rotateSpeedSlider.addEventListener('input', function() {
+            controls.autoRotateSpeed = parseFloat(this.value);
+        });
+    }
+    
+    // Point opacity slider
+    const pointOpacitySlider = document.getElementById('point-opacity');
+    if (pointOpacitySlider) {
+        pointOpacitySlider.addEventListener('input', function() {
+            if (pointsMaterial) {
+                pointsMaterial.opacity = parseFloat(this.value);
+                document.getElementById('opacity-val').textContent = this.value;
+            }
+        });
+    }
+    
+    // Point size slider
+    const pointSizeSlider = document.getElementById('point-size');
+    if (pointSizeSlider) {
+        pointSizeSlider.addEventListener('input', function() {
+            if (pointsMaterial) {
+                const newSize = parseFloat(this.value);
+                pointsMaterial.size = newSize;
+                document.getElementById('size-val').textContent = this.value;
+                
+                // Update raycaster threshold to match visual size
+                // Use 1.2x for slight hover tolerance without overlap issues
+                if (raycaster) {
+                    raycaster.params.Points.threshold = newSize * 1.2;
+                }
+            }
+        });
+    }
+    
+    // Text BG opacity slider
+    const textOpacitySlider = document.getElementById('text-opacity');
+    if (textOpacitySlider) {
+        textOpacitySlider.addEventListener('input', function() {
+            document.getElementById('text-opacity-val').textContent = this.value;
+            // Update text display if visible
+            const textDisplay = document.getElementById('text-display');
+            if (textDisplay && textDisplay.style.display !== 'none') {
+                const currentBg = textDisplay.style.backgroundColor;
+                if (currentBg) {
+                    const rgbMatch = currentBg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                    if (rgbMatch) {
+                        textDisplay.style.backgroundColor = `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, ${this.value})`;
+                    }
+                }
+            }
+        });
+    }
+    
+    // Text font size slider
+    const fontSizeSlider = document.getElementById('text-font-size');
+    if (fontSizeSlider) {
+        fontSizeSlider.addEventListener('input', function() {
+            document.getElementById('font-size-val').textContent = this.value;
+            const textContent = document.getElementById('text-content');
+            if (textContent) {
+                textContent.style.fontSize = this.value + 'px';
+            }
+        });
+    }
+    
+    // Text height slider - already handled by oninput in HTML
+    
+    // Transition speed slider
+    const transitionSpeedSlider = document.getElementById('transition-speed');
+    if (transitionSpeedSlider) {
+        transitionSpeedSlider.addEventListener('input', function() {
+            document.getElementById('transition-val').textContent = this.value;
+            animationDuration = parseFloat(this.value) * 1000;
+        });
+    }
+    
+    // Topic label depth effect slider
+    const depthEffectSlider = document.getElementById('topic-depth-effect');
+    if (depthEffectSlider) {
+        depthEffectSlider.addEventListener('input', function() {
+            document.getElementById('topic-depth-val').textContent = this.value;
+            // Update will happen automatically in the next animation frame
+        });
+    }
+}
+
+// Initialize counts
+updateCounts();
+
+// Text height control function
+function updateTextHeight(value) {
+    const textDisplay = document.getElementById('text-display');
+    if (textDisplay) {
+        textDisplay.style.height = value + 'vh';
+    }
+};
+
+// Function to toggle text display collapse
+function toggleTextDisplay() {
+    const textDisplay = document.getElementById('text-display');
+    const collapseIcon = document.querySelector('#text-display .collapse-icon');
+    if (textDisplay) {
+        textDisplay.classList.toggle('minimized');
+        if (collapseIcon) {
+            collapseIcon.textContent = textDisplay.classList.contains('minimized') ? '+' : '−';
+        }
+    }
+};
+
+// Make essay display resizable
+function makeEssayDisplayResizable() {
+    const textDisplay = document.getElementById('text-display');
+    if (!textDisplay) return;
+    
+    let isResizing = false;
+    let currentHandle = null;
+    let startX, startY, startWidth, startHeight, startLeft, startRight;
+    
+    // Add event listeners to resize handles
+    document.querySelectorAll('.essay-resize-handle').forEach(handle => {
+        handle.addEventListener('mousedown', initResize);
+    });
+    
+    function initResize(e) {
+        e.preventDefault();
+        isResizing = true;
+        currentHandle = e.target;
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        startWidth = parseInt(document.defaultView.getComputedStyle(textDisplay).width, 10);
+        startHeight = parseInt(document.defaultView.getComputedStyle(textDisplay).height, 10);
+        
+        const rect = textDisplay.getBoundingClientRect();
+        startLeft = rect.left;
+        startRight = window.innerWidth - rect.right;
+        
+        document.addEventListener('mousemove', doResize);
+        document.addEventListener('mouseup', stopResize);
+    }
+    
+    function doResize(e) {
+        if (!isResizing) return;
+        
+        if (currentHandle.classList.contains('essay-resize-n')) {
+            // Resize height from top
+            const newHeight = Math.max(50, Math.min(window.innerHeight * 0.7, startHeight - (e.clientY - startY)));
+            textDisplay.style.height = newHeight + 'px';
+            
+            // Update height slider
+            const heightPercent = Math.round((newHeight / window.innerHeight) * 100);
+            const heightSlider = document.getElementById('text-height');
+            if (heightSlider) {
+                heightSlider.value = heightPercent;
+                document.getElementById('text-height-val').textContent = heightPercent;
+            }
+        } else if (currentHandle.classList.contains('essay-resize-e')) {
+            // Resize width from right - adjust right edge only
+            const deltaX = e.clientX - startX;
+            const newWidth = Math.max(400, Math.min(window.innerWidth - startLeft - 20, startWidth + deltaX));
+            textDisplay.style.width = newWidth + 'px';
+            textDisplay.style.right = 'auto';
+        } else if (currentHandle.classList.contains('essay-resize-w')) {
+            // Resize width from left - adjust left edge only
+            const deltaX = e.clientX - startX;
+            const newLeft = Math.max(20, Math.min(window.innerWidth - startWidth - 20, startLeft + deltaX));
+            const newWidth = startWidth - (newLeft - startLeft);
+            if (newWidth >= 400) {
+                textDisplay.style.width = newWidth + 'px';
+                textDisplay.style.left = newLeft + 'px';
+                textDisplay.style.right = 'auto';
+            }
+        }
+    }
+    
+    function stopResize() {
+        isResizing = false;
+        currentHandle = null;
+        document.removeEventListener('mousemove', doResize);
+        document.removeEventListener('mouseup', stopResize);
+        
+        // Restore the border color based on current mode
+        let currentPoint = null;
+        
+        if (galleryMode && currentGalleryCategory && sortedCategoryIndices[currentGalleryCategory]) {
+            // In gallery mode, get the current essay point
+            const indices = sortedCategoryIndices[currentGalleryCategory];
+            if (currentGalleryIndex >= 0 && currentGalleryIndex < indices.length) {
+                currentPoint = data[indices[currentGalleryIndex]];
+            }
+        } else if (hoveredPoint) {
+            // In normal mode, use the hovered point
+            currentPoint = hoveredPoint;
+        }
+        
+        if (currentPoint && typeof getPointColor === 'function') {
+            // Get the current point color and reapply the border
+            const pointColor = getPointColor(currentPoint);
+            const r = Math.floor(pointColor.r * 255);
+            const g = Math.floor(pointColor.g * 255);
+            const b = Math.floor(pointColor.b * 255);
+            
+            const brightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+            let borderR, borderG, borderB;
+            
+            if (brightness < 0.5) {
+                borderR = Math.min(255, r + 100);
+                borderG = Math.min(255, g + 100);
+                borderB = Math.min(255, b + 100);
+            } else {
+                borderR = r;
+                borderG = g;
+                borderB = b;
+            }
+            
+            const borderRGB = `rgb(${borderR}, ${borderG}, ${borderB})`;
+            textDisplay.style.setProperty('border', `2px solid ${borderRGB}`, 'important');
+        }
+    }
+}
+
+// Make essay display draggable (removed)
+function makeEssayDisplayDraggable() {
+    // Removed - essay display is now fixed at bottom
+    
+    let isDragging = false;
+    let currentX;
+    let currentY;
+    let initialX;
+    let initialY;
+    let xOffset = 0;
+    let yOffset = 0;
+    
+    function dragStart(e) {
+        if (e.type === 'mousedown') {
+            initialX = e.clientX - xOffset;
+            initialY = e.clientY - yOffset;
+        }
+        
+        if (e.target === dragHandle || dragHandle.contains(e.target)) {
+            isDragging = true;
+        }
+    }
+    
+    function dragEnd(e) {
+        initialX = currentX;
+        initialY = currentY;
+        isDragging = false;
+    }
+    
+    function drag(e) {
+        if (isDragging) {
+            e.preventDefault();
+            
+            if (e.type === 'mousemove') {
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
+                
+                xOffset = currentX;
+                yOffset = currentY;
+                
+                // Remove the transform translateX(-50%) and use absolute positioning
+                essayDisplay.style.transform = `translate(${currentX}px, ${currentY}px)`;
+                essayDisplay.style.left = '50%';
+                essayDisplay.style.bottom = '20px';
+            }
+        }
+    }
+    
+    dragHandle.addEventListener('mousedown', dragStart);
+    document.addEventListener('mouseup', dragEnd);
+    document.addEventListener('mousemove', drag);
+    
+    // Make resizable
+    const resizeHandle = essayDisplay.querySelector('.resize-handle');
+    if (resizeHandle) {
+        let isResizing = false;
+        let startWidth;
+        let startHeight;
+        let startX;
+        let startY;
+        
+        resizeHandle.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            startWidth = parseInt(document.defaultView.getComputedStyle(essayDisplay).width, 10);
+            startHeight = parseInt(document.defaultView.getComputedStyle(essayDisplay).height, 10);
+            startX = e.clientX;
+            startY = e.clientY;
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            essayDisplay.style.width = (startWidth + e.clientX - startX) + 'px';
+            essayDisplay.style.height = (startHeight + e.clientY - startY) + 'px';
+            essayDisplay.style.maxWidth = 'none';
+            essayDisplay.style.maxHeight = 'none';
+        });
+        
+        document.addEventListener('mouseup', function() {
+            isResizing = false;
+        });
+    }
+}
+
+// Initialize controls after a delay to ensure DOM is ready
+setTimeout(() => {
+    initializeControls();
+    makeEssayDisplayResizable();
+}, 100);
+
+// Add keyboard navigation for gallery mode and PC selection
+document.addEventListener('keydown', function(event) {
+    // Check if PC global info panel is visible
+    const pcGlobalInfo = document.getElementById('pc-global-info');
+    const isPCPanelVisible = pcGlobalInfo && pcGlobalInfo.style.display === 'block';
+    
+    if (galleryMode) {
+        switch(event.key) {
+            case 'ArrowLeft':
+                event.preventDefault();
+                navigateGallery(-1);
+                break;
+            case 'ArrowRight':
+                event.preventDefault();
+                navigateGallery(1);
+                break;
+            case 'Escape':
+                event.preventDefault();
+                stopGallery();
+                break;
+        }
+    } else if (isPCPanelVisible) {
+        // Navigate PCs with arrow keys when PC panel is open
+        const pcSelect = document.getElementById('pc-select');
+        if (pcSelect) {
+            const currentIndex = pcSelect.selectedIndex;
+            const optionCount = pcSelect.options.length;
+            
+            switch(event.key) {
+                case 'ArrowLeft':
+                    event.preventDefault();
+                    if (currentIndex > 0) {
+                        pcSelect.selectedIndex = currentIndex - 1;
+                        handlePCSelectChange();
+                    }
+                    break;
+                case 'ArrowRight':
+                    event.preventDefault();
+                    if (currentIndex < optionCount - 1) {
+                        pcSelect.selectedIndex = currentIndex + 1;
+                        handlePCSelectChange();
+                    }
+                    break;
+            }
+        }
+    }
+});
+
+// Cursor circle functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const cursorIndicator = document.getElementById('cursor-indicator');
+    if (cursorIndicator) {
+        // Hide by default
+        cursorIndicator.style.display = 'none';
+        
+        // Show and follow mouse when over the 3D canvas
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+            canvas.addEventListener('mouseenter', function() {
+                cursorIndicator.style.display = 'block';
+            });
+            
+            canvas.addEventListener('mouseleave', function() {
+                cursorIndicator.style.display = 'none';
+            });
+            
+            canvas.addEventListener('mousemove', function(event) {
+                cursorIndicator.style.left = event.clientX + 'px';
+                cursorIndicator.style.top = event.clientY + 'px';
+            });
+        }
+        
+        // Also update position during any mouse movement (for smooth transitions)
+        document.addEventListener('mousemove', function(event) {
+            if (cursorIndicator.style.display === 'block') {
+                cursorIndicator.style.left = event.clientX + 'px';
+                cursorIndicator.style.top = event.clientY + 'px';
+            }
+        });
+    }
+});
+
+// Add hovering class to cursor when over points
+function updateCursorHover(isHovering) {
+    const cursorIndicator = document.getElementById('cursor-indicator');
+    if (cursorIndicator) {
+        if (isHovering) {
+            cursorIndicator.classList.add('hovering');
+        } else {
+            cursorIndicator.classList.remove('hovering');
+        }
+    }
+}
+
+// Toggle gallery controls minimized state
+function toggleGalleryControls() {
+    const galleryControls = document.getElementById('gallery-controls');
+    const collapseIcon = document.querySelector('.gallery-collapse-icon');
+    
+    if (galleryControls && collapseIcon) {
+        galleryControls.classList.toggle('minimized');
+        collapseIcon.textContent = galleryControls.classList.contains('minimized') ? '+' : '−';
+    }
+}

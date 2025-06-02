@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ config.visualization.title }}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background: #000;
+            cursor: none;
+            color: #fff;
+        }
+        
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        * {
+            text-shadow: 
+                -1px -1px 0 #000,
+                 1px -1px 0 #000,
+                -1px  1px 0 #000,
+                 1px  1px 0 #000;
+        }
+        
+        #cursor-indicator {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.05);
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            transition: opacity 0.2s ease, border-color 0.1s ease, background 0.1s ease;
+            mix-blend-mode: difference;
+        }
+        
+        #cursor-indicator.hovering {
+            border-color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 13px;
+            border: 1px solid rgba(255,255,255,0.2);
+            max-width: 400px;
+            z-index: 100;
+            cursor: move;
+            transition: transform 0.3s ease;
+            overflow: visible;
+        }
+        
+        #info.collapsed {
+            transform: translateX(calc(-100% + 40px));
+        }
+        
+        #info .collapse-btn {
+            position: absolute;
+            right: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 25px;
+            height: 60px;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-left: none;
+            border-radius: 0 5px 5px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+        
+        #info .collapse-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 13px;
+            border: 1px solid rgba(255,255,255,0.2);
+            z-index: 100;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            overflow: visible;
+        }
+        
+        #controls.collapsed {
+            transform: translateX(calc(100% - 40px));
+        }
+        
+        #controls .collapse-btn {
+            position: absolute;
+            left: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 25px;
+            height: 60px;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-right: none;
+            border-radius: 5px 0 0 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+        
+        #controls .collapse-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        
+        #gallery-controls {
+            position: fixed;
+            top: 10px;
+            right: 25%;
+            transform: translateX(50%);
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 13px;
+            border: 1px solid rgba(255,255,255,0.2);
+            z-index: 100;
+            width: 300px;
+            max-width: 300px;
+            transition: all 0.3s ease;
+        }
+        
+        #gallery-controls.minimized {
+            padding: 10px 15px;
+            width: 300px;
+            max-width: 300px;
+        }
+        
+        #gallery-controls.minimized #gallery-content {
+            display: none;
+        }
+        
+        #gallery-header:hover {
+            opacity: 0.8;
+        }
+        
+        #text-display {
+            position: fixed;
+            bottom: 0;
+            left: 500px;
+            right: 500px;
+            width: calc(100% - 1000px);
+            height: 25vh;
+            background: rgba(0,0,0,0.95);
+            padding: 0;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 8px 8px 0 0;
+            font-size: 14px;
+            line-height: 1.6;
+            overflow: hidden;
+            display: none;
+            z-index: 1000;
+            min-height: 50px;
+            max-height: 70vh;
+            transition: height 0.3s ease, width 0.3s ease, left 0.3s ease, right 0.3s ease;
+        }
+        
+        #text-display.minimized {
+            height: 110px !important;
+            overflow: hidden;
+            padding: 8px 15px;
+        }
+        
+        #text-display.minimized #text-content,
+        #text-display.minimized #pc-analysis {
+            display: none;
+        }
+        
+        #text-display.minimized #text-header {
+            margin-bottom: 0;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        
+        #text-display.minimized .header-pcs {
+            display: none;
+        }
+        
+        .resize-handle-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            cursor: ns-resize;
+            background: transparent;
+        }
+        
+        .resize-handle-top:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .resize-handle-left {
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 5px;
+            cursor: ew-resize;
+            background: transparent;
+        }
+        
+        .resize-handle-left:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .resize-handle-right {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 5px;
+            cursor: ew-resize;
+            background: transparent;
+        }
+        
+        .resize-handle-right:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .resize-handle-corner {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: transparent;
+        }
+        
+        .resize-handle-corner:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .resize-handle-corner.top-left {
+            top: 0;
+            left: 0;
+            cursor: nw-resize;
+        }
+        
+        .resize-handle-corner.top-right {
+            top: 0;
+            right: 0;
+            cursor: ne-resize;
+        }
+        
+        .minimize-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            color: #999;
+            padding: 0 5px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        
+        .minimize-btn:hover {
+            color: #fff;
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .layer-btn {
+            position: absolute;
+            top: 10px;
+            right: 40px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #999;
+            padding: 2px 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            transition: all 0.2s;
+            font-family: monospace;
+        }
+        
+        .layer-btn:hover {
+            color: #fff;
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .layer-btn.on-top {
+            color: #ffffff;
+        }
+        
+        #text-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            font-size: 12px;
+        }
+        
+        #text-display-header {
+            padding: 15px 20px 10px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        #text-display-content {
+            height: calc(100% - 60px);
+            overflow-y: auto;
+        }
+        
+        .collapse-icon {
+            font-size: 18px;
+            color: #999;
+            transition: transform 0.3s ease;
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            text-align: center;
+            line-height: 24px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .collapse-icon:hover {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+        
+        #text-display.minimized .collapse-icon {
+            transform: rotate(180deg);
+        }
+        
+        .essay-resize-handle {
+            position: absolute;
+            background: transparent;
+            z-index: 10;
+        }
+        
+        .essay-resize-handle:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .essay-resize-n {
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 8px;
+            cursor: ns-resize;
+        }
+        
+        .essay-resize-e {
+            top: 0;
+            bottom: 0;
+            right: 0;
+            width: 8px;
+            cursor: ew-resize;
+        }
+        
+        .essay-resize-w {
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 8px;
+            cursor: ew-resize;
+        }
+        
+        .header-main {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3px;
+        }
+        
+        .header-pcs {
+            display: flex;
+            gap: 10px;
+            font-size: 11px;
+            color: #ccc;
+            flex-wrap: wrap;
+        }
+        
+        .pc-inline {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        .pc-inline:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        #text-content {
+            line-height: 1.4;
+            white-space: pre-wrap;
+            color: white;
+            margin-bottom: 8px;
+            font-size: 24px;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        #pc-analysis {
+            padding: 10px 0;
+            margin-top: 10px;
+            display: none;
+        }
+        
+        .pc-item {
+            padding: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            font-size: 11px;
+        }
+        
+        .pc-item:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.3);
+        }
+        
+        .pc-name {
+            font-weight: bold;
+            color: #ffffff;
+            font-size: 12px;
+        }
+        
+        .pc-percentile {
+            color: white;
+        }
+        
+        .pc-values {
+            font-size: 10px;
+            color: white;
+            margin-top: 2px;
+        }
+        
+        #pc-global-info {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            padding: 20px;
+            border-radius: 5px;
+            border: 2px solid rgba(255,255,255,0.3);
+            display: none;
+            width: 90vw;
+            height: 90vh;
+            max-width: 1800px;
+            max-height: 95vh;
+            overflow: hidden;
+            z-index: 1000;
+            min-width: 1200px;
+            min-height: 700px;
+        }
+        
+        #pc-global-info h4 {
+            margin: 0 0 10px 0;
+            color: #ffffff;
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            cursor: pointer;
+            font-size: 28px;
+            color: #fff;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+        
+        .close-btn:hover {
+            opacity: 1;
+        }
+        
+        /* Common popup window styles */
+        #topic-stats-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            padding: 15px 20px;
+            border-radius: 5px;
+            border: 2px solid rgba(255,255,255,0.3);
+            display: none;
+            width: 90vw;
+            height: 85vh;
+            max-width: 1800px;
+            max-height: 900px;
+            overflow: hidden;
+            z-index: 1000;
+            min-width: 1200px;
+            min-height: 600px;
+        }
+        
+        #dml-stats-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            padding: 15px 20px;
+            border-radius: 5px;
+            border: 2px solid rgba(255,255,255,0.3);
+            display: none;
+            width: 90vw;
+            height: 85vh;
+            max-width: 1800px;
+            max-height: 900px;
+            overflow: hidden;
+            z-index: 1000;
+            min-width: 1400px;
+            min-height: 600px;
+        }
+        
+        #topic-stats-panel h4, #dml-stats-panel h4 {
+            margin: 0 0 10px 0;
+            color: #ffffff;
+            padding-right: 30px;
+        }
+        
+        /* Active window highlighting */
+        .popup-active {
+            z-index: 1002 !important;
+            border-color: rgba(76, 175, 80, 0.8) !important;
+        }
+        
+        /* Scrollable content area for popup windows */
+        .popup-content {
+            overflow-y: auto;
+            overflow-x: hidden;
+            height: calc(100% - 50px);
+            padding-right: 10px;
+            padding-bottom: 10px;
+        }
+        
+        /* Table styling for popup windows */
+        .popup-content table {
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        
+        .popup-content td, .popup-content th {
+            padding: 8px 10px;
+        }
+        
+        /* Ensure tables don't create horizontal scroll */
+        .popup-content table {
+            table-layout: auto;
+            word-wrap: break-word;
+        }
+        
+        .prob-table {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .prob-table td {
+            padding: 4px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .prob-table td:first-child {
+            font-weight: bold;
+            color: #888;
+        }
+        
+        .prob-high {
+            color: #ffffff;
+            font-weight: bold;
+        }
+        
+        .prob-med {
+            color: #FFC107;
+        }
+        
+        .prob-low {
+            color: #999;
+        }
+        
+        .threshold-info {
+            font-size: 11px;
+            color: #999;
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+        }
+        
+        /* Removed old #dml-table styles - now using #dml-stats-panel */
+        
+        .dml-stats {
+            width: 100%;
+            font-size: 12px;
+        }
+        
+        .dml-stats td {
+            padding: 4px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .dml-stats td:first-child {
+            font-weight: bold;
+            color: #888;
+        }
+        
+        .control-group {
+            margin: 7px 0;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .control-group:last-child {
+            border-bottom: none;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 3px;
+            font-weight: 600;
+            font-size: 13px;
+            letter-spacing: 0.02em;
+        }
+        
+        .threshold-input {
+            width: 60px;
+            margin: 0 5px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 2px 5px;
+        }
+        
+        .legend-item {
+            margin: 5px 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .color-box {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            margin-right: 8px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        button {
+            padding: 6px 12px;
+            margin-top: 5px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            transition: all 0.15s ease;
+        }
+        
+        button:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.4);
+            transform: translateY(-1px);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        #counts {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        
+        .gallery-button {
+            display: block;
+            width: 100%;
+            margin: 5px 0;
+            padding: 8px;
+            text-align: left;
+            font-size: 12px;
+            border: 2px solid;
+            background: rgba(0,0,0,0.5);
+        }
+        
+        .gallery-button:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .gallery-button.active {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .nav-buttons {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        .nav-button {
+            flex: 1;
+            padding: 5px;
+            font-size: 11px;
+        }
+        
+        #gallery-info {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 11px;
+            color: #ccc;
+        }
+        
+        
+        h3 {
+            margin-top: 0;
+            color: #fff;
+        }
+        
+        input[type="range"] {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        select {
+            background: rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 3px 5px;
+        }
+        
+        select option {
+            background: #000;
+            color: white;
+        }
+        
+        #color-mode-panel {
+            position: fixed;
+            top: 10px;
+            left: 25%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid rgba(255,255,255,0.2);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .color-mode-btn {
+            padding: 8px 15px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        
+        .color-mode-btn:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: rgba(255,255,255,0.4);
+        }
+        
+        .color-mode-btn.active {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #ffffff;
+            color: #ffffff;
+        }
+        
+        #topic-stats-panel {
+            display: none; 
+            position: fixed; 
+            bottom: 120px; 
+            right: 20px; 
+            background: rgba(0,0,0,0.9); 
+            padding: 20px; 
+            border-radius: 10px; 
+            border: 1px solid #444; 
+            max-width: 700px; 
+            max-height: 500px; 
+            z-index: 102;
+            overflow-y: auto;
+        }
+        
+        #pc-global-info {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.9);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #444;
+            max-width: 400px;
+            max-height: 300px;
+            z-index: 102;
+            overflow-y: auto;
+        }
+        
+        #dml-stats-panel {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            right: 450px;
+            background: rgba(0,0,0,0.9);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #444;
+            max-width: 400px;
+            max-height: 400px;
+            z-index: 102;
+            overflow-y: auto;
+        }
+        
+        #essay-display {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.9);
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px solid rgba(255,255,255,0.3);
+            max-width: 600px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 200;
+        }
+        
+        #essay-header {
+            font-size: 14px;
+            color: #ccc;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        #essay-text {
+            font-size: {{ config.visualization.essay_font_size }}px;
+            line-height: 1.6;
+            color: #fff;
+        }
+        
+        /* Category focus button styles */
+        .category-btn {
+            width: 100%;
+            text-align: left;
+            font-size: 13px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .category-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .category-btn:hover::before {
+            left: 100%;
+        }
+        
+        .category-focus-controls {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        #category-focus-info {
+            padding: 5px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+            text-align: center;
+        }
+        
+        .presence-info {
+            background: rgba(255,255,255,0.05);
+            padding: 8px;
+            border-radius: 4px;
+        }
+    </style>
+</head><body>
+    <div id="cursor-indicator"></div>
+    
+    <div id="color-mode-panel">
+        <h4 style="margin: 0 10px 0 0; margin-top: 0;">Color By</h4>
+        <button class="color-mode-btn active" data-mode="outcomes" onclick="setColorMode('outcomes')">Outcomes</button>
+        <button class="color-mode-btn" data-mode="topics" onclick="setColorMode('topics')">Topics</button>
+        <button class="color-mode-btn" data-mode="pc_gradient" onclick="setColorMode('pc_gradient')">PC Gradient</button>
+    </div>
+    
+    <div id="info" class="collapsed">
+        <div class="collapse-btn" onclick="toggleInfoCollapse()">
+            <span id="info-collapse-icon">◀</span>
+        </div>
+        <h3 style="margin-bottom: 5px; font-size: 18px;">PerceptionML</h3>
+        <div style="font-size: 12px; color: #ccc; margin-bottom: 10px;">Total Items: {{ total_count }}</div>
+        
+        {% for outcome in config.data.outcomes %}
+        <div class="control-group outcome-control-group" data-outcome="{{ outcome.name }}" data-mode="{{ outcome.mode }}">
+            {% if outcome.mode == 'zero_presence' %}
+            {# Zero-presence mode controls #}
+            <label>{{ outcome.display_name }} Presence:</label>
+            <div class="presence-info" style="margin: 5px 0; font-size: 12px; color: #aaa;">
+                <div>Zero (absent): {{ outcome.thresholds.zero_count }} ({{ (outcome.thresholds.zero_fraction * 100)|round(1) }}%)</div>
+                <div>Non-zero (present): {{ outcome.thresholds.non_zero_count }} ({{ ((1 - outcome.thresholds.zero_fraction) * 100)|round(1) }}%)</div>
+            </div>
+            {% else %}
+            {# Continuous mode threshold controls #}
+            <label>{{ outcome.display_name }} Thresholds:</label>
+            <div>
+                Low: 
+                {% if outcome.type == 'continuous' %}
+                    &lt; <input type="number" id="{{ outcome.name }}-low-val" class="threshold-input" 
+                         value="{{ outcome.thresholds.low|round(1) }}" min="{{ outcome.statistics.min }}" 
+                         max="{{ outcome.statistics.max }}" step="0.1" 
+                         onchange="updateFromValues('{{ outcome.name }}'); updateCategories()">
+                {% else %}
+                    ≤ <input type="number" id="{{ outcome.name }}-low-val" class="threshold-input" 
+                         value="{{ outcome.thresholds.low|int }}" min="{{ outcome.statistics.min }}" 
+                         max="{{ outcome.statistics.max }}" step="1" 
+                         onchange="updateFromValues('{{ outcome.name }}'); updateCategories()">
+                {% endif %}
+                <span style="color: #888;">(P<span id="{{ outcome.name }}-low-pct-display">{{ outcome.thresholds.low_percentile }}</span>)</span>
+                <br>
+                High: 
+                {% if outcome.type == 'continuous' %}
+                    &gt; <input type="number" id="{{ outcome.name }}-high-val" class="threshold-input" 
+                         value="{{ outcome.thresholds.high|round(1) }}" min="{{ outcome.statistics.min }}" 
+                         max="{{ outcome.statistics.max }}" step="0.1" 
+                         onchange="updateFromValues('{{ outcome.name }}'); updateCategories()">
+                {% else %}
+                    ≥ <input type="number" id="{{ outcome.name }}-high-val" class="threshold-input" 
+                         value="{{ outcome.thresholds.high|int }}" min="{{ outcome.statistics.min }}" 
+                         max="{{ outcome.statistics.max }}" step="1" 
+                         onchange="updateFromValues('{{ outcome.name }}'); updateCategories()">
+                {% endif %}
+                <span style="color: #888;">(P<span id="{{ outcome.name }}-high-pct-display">{{ outcome.thresholds.high_percentile }}</span>)</span>
+            </div>
+            <div style="margin-top: 5px;">
+                Low: P<input type="number" id="{{ outcome.name }}-low-pct-input" min="0" max="50" 
+                     value="{{ outcome.thresholds.low_percentile }}" step="1" 
+                     style="width: 40px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 2px 4px;" 
+                     onchange="updatePercentileFromInput('{{ outcome.name }}', 'low'); updateCategories()">
+                <input type="range" id="{{ outcome.name }}-low-pct" min="0" max="50" 
+                       value="{{ outcome.thresholds.low_percentile }}" step="1" style="width: 60px;" 
+                       oninput="updateFromPercentiles('{{ outcome.name }}'); updateCategories()">
+                <br>
+                High: P<input type="number" id="{{ outcome.name }}-high-pct-input" min="50" max="100" 
+                      value="{{ outcome.thresholds.high_percentile }}" step="1" 
+                      style="width: 40px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 2px 4px;" 
+                      onchange="updatePercentileFromInput('{{ outcome.name }}', 'high'); updateCategories()">
+                <input type="range" id="{{ outcome.name }}-high-pct" min="50" max="100" 
+                       value="{{ outcome.thresholds.high_percentile }}" step="1" style="width: 60px;" 
+                       oninput="updateFromPercentiles('{{ outcome.name }}'); updateCategories()">
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        
+        {# Category focus controls for zero-presence mode #}
+        {% if outcome_modes and ('zero_presence' in outcome_modes.values()) %}
+        <div class="control-group" id="category-focus-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
+            <label style="font-weight: bold; margin-bottom: 10px; display: block;">Show Categories:</label>
+            <div class="category-focus-controls" style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="display: flex; align-items: center; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer;">
+                    <input type="checkbox" id="cat-both-absent" checked onchange="updateCategoryVisibility()" style="margin-right: 8px;">
+                    <span style="display: inline-block; width: 16px; height: 16px; background: rgb(255,255,0); border: 1px solid #fff; margin-right: 8px; vertical-align: middle;"></span>
+                    Both Absent (0, 0)
+                </label>
+                <label style="display: flex; align-items: center; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer;">
+                    <input type="checkbox" id="cat-first-present" checked onchange="updateCategoryVisibility()" style="margin-right: 8px;">
+                    <span style="display: inline-block; width: 16px; height: 16px; background: rgb(255,0,255); border: 1px solid #fff; margin-right: 8px; vertical-align: middle;"></span>
+                    {{ config.data.outcomes[0].display_name }} Present Only
+                </label>
+                <label style="display: flex; align-items: center; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer;">
+                    <input type="checkbox" id="cat-second-present" checked onchange="updateCategoryVisibility()" style="margin-right: 8px;">
+                    <span style="display: inline-block; width: 16px; height: 16px; background: rgb(0,255,255); border: 1px solid #fff; margin-right: 8px; vertical-align: middle;"></span>
+                    {{ config.data.outcomes[1].display_name }} Present Only
+                </label>
+                <label style="display: flex; align-items: center; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer;">
+                    <input type="checkbox" id="cat-both-present" checked onchange="updateCategoryVisibility()" style="margin-right: 8px;">
+                    <span style="display: inline-block; width: 16px; height: 16px; background: rgb(0,255,0); border: 1px solid #fff; margin-right: 8px; vertical-align: middle;"></span>
+                    Both Present (>0, >0)
+                </label>
+                <label style="display: flex; align-items: center; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 12px;">
+                    <input type="checkbox" id="show-agreement" onchange="updateCategoryVisibility()" style="margin-right: 8px;">
+                    <span style="display: inline-block; width: 16px; height: 16px; background: rgb(0,230,0); border: 1px solid #fff; margin-right: 8px; vertical-align: middle;"></span>
+                    Highlight Agreement (Both Same)
+                </label>
+                <label style="display: flex; align-items: center; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer;">
+                    <input type="checkbox" id="show-disagreement" onchange="updateCategoryVisibility()" style="margin-right: 8px;">
+                    <span style="display: inline-block; width: 16px; height: 16px; background: rgb(255,0,0); border: 1px solid #fff; margin-right: 8px; vertical-align: middle;"></span>
+                    Highlight Disagreement (One Each)
+                </label>
+            </div>
+            <div style="margin-top: 10px; font-size: 11px; color: #888;">
+                <div id="category-focus-info">Showing all categories</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div style="margin-top: 10px;">
+            <label>Presets:</label>
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 5px;">
+                <button onclick="applyPreset('extremes')" style="padding: 5px 10px;">Extremes (P10/P90)</button>
+                <button onclick="applyPreset('quartiles')" style="padding: 5px 10px;">Quartiles (P25/P75)</button>
+                <button onclick="applyPreset('median')" style="padding: 5px 10px;">Median (P50)</button>
+            </div>
+        </div>
+        
+        
+        <div id="legend" style="margin-top: 15px;">
+            <!-- Legend will be populated by JavaScript -->
+        </div>
+        
+        <div id="pc-legend" style="display: none; margin-top: 10px;">
+            <label>PC Gradient:</label>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <span style="color: #999; font-size: 11px;">Low</span>
+                <div style="width: 100px; height: 15px; margin: 0 5px;
+                            background: linear-gradient(to right, #9400D3, #00D4FF, #00FF00, #FFFF00);
+                            border: 1px solid rgba(255,255,255,0.3);"></div>
+                <span style="color: #999; font-size: 11px;">High</span>
+            </div>
+            <div id="pc-name" style="margin-top: 5px; font-size: 12px; color: #ccc;"></div>
+        </div>
+        
+        <div id="counts"></div>
+    </div>
+    
+    {% include 'components/controls.html.j2' %}
+    {% include 'components/gallery_controls.html.j2' %}
+    {% include 'components/text_display.html.j2' %}
+    {% include 'components/pc_global_info.html.j2' %}
+    {% if has_dml %}
+        {% include 'components/dml_table.html.j2' %}
+    {% endif %}
+    {% include 'components/topic_stats.html.j2' %}
+    
+    <script>
+        // Data from backend
+        const data = {{ viz_data }};
+        const topicVizData = {{ topic_viz_data }};
+        const topicStatsData = {{ topic_stats_data }};
+        const cloudCenter = {
+            x: {{ cloud_center.x }},
+            y: {{ cloud_center.y }},
+            z: {{ cloud_center.z }}
+        };
+        const pcGlobalEffects = {{ pc_global_effects }};
+        const pcVarianceExplained = {{ pc_variance_explained }};
+        {% if pc_stats_data is defined %}
+        const pcStatsData = {{ pc_stats_data }};
+        {% else %}
+        const pcStatsData = null;
+        {% endif %}
+        const categoryColors = {{ category_colors }};
+        const outcomesConfig = {{ outcomes_config }};
+        {% if has_dml %}
+        const dmlResults = {{ dml_results | tojson }};
+        {% else %}
+        const dmlResults = null;
+        {% endif %}
+        
+        // Configuration
+        const config = {{ config | tojson }};
+        
+        // Category visibility state
+        const outcomeModes = {{ outcome_modes }};
+        
+        // Function to update category visibility based on checkboxes
+        function updateCategoryVisibility() {
+            updatePointColors();
+        }
+        
+        // Get which categories should be visible
+        function getVisibleCategories() {
+            return {
+                both_absent: document.getElementById('cat-both-absent')?.checked ?? true,
+                first_present: document.getElementById('cat-first-present')?.checked ?? true,
+                second_present: document.getElementById('cat-second-present')?.checked ?? true,
+                both_present: document.getElementById('cat-both-present')?.checked ?? true,
+                show_agreement: document.getElementById('show-agreement')?.checked ?? false,
+                show_disagreement: document.getElementById('show-disagreement')?.checked ?? false
+            };
+        }
+        
+        // Override updatePointColors to use checkbox visibility
+        const originalUpdatePointColors = updatePointColors;
+        updatePointColors = function() {
+            if (!points || !points.geometry) return;
+            
+            const colors = points.geometry.getAttribute('color');
+            if (!colors) return;
+            
+            const visible = getVisibleCategories();
+            const isZeroPresenceMode = outcomesConfig.some(o => o.mode === 'zero_presence');
+            
+            for (let i = 0; i < data.length; i++) {
+                const point = data[i];
+                let color = [0.3, 0.3, 0.3]; // Default light gray for hidden points
+                
+                if (colorMode === 'outcomes' && isZeroPresenceMode) {
+                    const val1 = point[outcomesConfig[0].name];
+                    const val2 = point[outcomesConfig[1].name];
+                    const present1 = val1 !== 0;
+                    const present2 = val2 !== 0;
+                    
+                    // Check agreement/disagreement status
+                    const isAgreement = (present1 === present2);
+                    const isDisagreement = (present1 !== present2);
+                    
+                    // Determine category
+                    let cat = getPointCategory(point);
+                    
+                    // First priority: Agreement/Disagreement highlighting
+                    if (visible.show_agreement && isAgreement) {
+                        color = categoryColors['agreement'] || [0.3, 0.9, 0.3];
+                    } else if (visible.show_disagreement && isDisagreement) {
+                        color = categoryColors['disagreement'] || [0.9, 0.3, 0.3];
+                    } else {
+                        // Second priority: Category visibility
+                        if ((cat === 'both_absent' && visible.both_absent) ||
+                            (cat === 'first_present' && visible.first_present) ||
+                            (cat === 'second_present' && visible.second_present) ||
+                            (cat === 'both_present' && visible.both_present)) {
+                            color = categoryColors[cat] || [0.5, 0.5, 0.5];
+                        }
+                        // If category not visible, stays light gray
+                    }
+                } else {
+                    // Non-zero-presence mode or other color modes
+                    originalUpdatePointColors();
+                    return;
+                }
+                
+                // Apply color
+                colors.setXYZ(i, color[0], color[1], color[2]);
+            }
+            
+            colors.needsUpdate = true;
+        }
+        
+        // Helper function for HSL to RGB conversion
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return [r, g, b];
+        }
+        
+        {% include 'js/visualization.js.j2' %}
+        {% include 'js/interactions.js.j2' %}
+        {% include 'js/dml_stats.js.j2' %}
+        {% include 'js/pca_stats.js.j2' %}
+        {% include 'js/topic_stats.js.j2' %}
+    </script>
+</body>
+</html>

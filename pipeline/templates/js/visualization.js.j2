@@ -1,0 +1,399 @@
+// Main visualization code
+let scene, camera, renderer, controls, raycaster, mouse;
+let points, pointsMaterial;
+let hoveredPoint = null;
+let colorMode = 'outcomes';
+let positions = []; // Global positions array for gallery navigation
+let categories = []; // Global categories array for gallery navigation
+
+// Animation state variables (moved here to ensure initialization before animate())
+let isAnimating = false;
+let animationStartTime = 0;
+let animationDuration = 1500;
+let animationStart = {
+    cameraPos: null,
+    targetPos: null
+};
+let animationEnd = {
+    cameraPos: null,
+    targetPos: null
+};
+let returningToOverview = false;
+
+// Gallery state variables (moved here to ensure initialization before animate())
+let galleryMode = false;
+let currentGalleryCategory = null;
+let currentGalleryIndex = 0;
+let savedAutoRotate = true;
+
+// Topic-related global variables (moved here to ensure initialization before animate())
+let topicLabels = [];
+let topicLabelGroup = null;
+let currentVisibleTopicIds = new Set();
+
+// Category indices for gallery navigation
+// Initialize with both continuous and zero-presence categories
+const categoryIndices = {
+    // Continuous mode categories
+    'both_high': [],
+    'first_high': [],
+    'second_high': [],
+    'both_low': [],
+    'middle': [],
+    // Zero-presence mode categories
+    'both_absent': [],
+    'first_present': [],
+    'second_present': [],
+    'both_present': [],
+    'agreement': [],
+    'disagreement': []
+};
+
+// Store sorted indices for proximity navigation
+const sortedCategoryIndices = {
+    // Continuous mode categories
+    'both_high': [],
+    'first_high': [],
+    'second_high': [],
+    'both_low': [],
+    'middle': [],
+    // Zero-presence mode categories
+    'both_absent': [],
+    'first_present': [],
+    'second_present': [],
+    'both_present': [],
+    'agreement': [],
+    'disagreement': []
+};
+
+// Initialize Three.js scene
+function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    
+    // Initialize animation vectors
+    animationStart.cameraPos = new THREE.Vector3();
+    animationStart.targetPos = new THREE.Vector3();
+    animationEnd.cameraPos = new THREE.Vector3();
+    animationEnd.targetPos = new THREE.Vector3();
+    
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(250, 250, 250);
+    camera.lookAt(cloudCenter.x, cloudCenter.y, cloudCenter.z);
+    
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.domElement.id = 'canvas-container';
+    document.body.appendChild(renderer.domElement);
+    
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.target.set(cloudCenter.x, cloudCenter.y, cloudCenter.z);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.5;
+    controls.enableZoom = true;
+    controls.zoomSpeed = 0.6;  // Reduced from 1.2 for better control on MacBook trackpads
+    controls.minDistance = 50;
+    controls.maxDistance = 1000;
+    
+    raycaster = new THREE.Raycaster();
+    raycaster.params.Points.threshold = 1.2;  // 1.2x default point size of 1
+    mouse = new THREE.Vector2();
+    
+    // Create point cloud
+    createPointCloud();
+    
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    
+    // Debug: Log cloud center
+    console.log('Cloud center:', cloudCenter);
+    console.log('Data points range:', {
+        x: [Math.min(...data.map(d => d.x)), Math.max(...data.map(d => d.x))],
+        y: [Math.min(...data.map(d => d.y)), Math.max(...data.map(d => d.y))],
+        z: [Math.min(...data.map(d => d.z)), Math.max(...data.map(d => d.z))]
+    });
+    
+    // Event listeners
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('mousemove', onMouseMove);
+    
+    animate();
+}
+
+function createPointCloud() {
+    const geometry = new THREE.BufferGeometry();
+    positions = []; // Reset global positions
+    categories = []; // Reset global categories
+    const colors = [];
+    
+    data.forEach(point => {
+        positions.push(point.x, point.y, point.z);
+        const category = getPointCategory(point);
+        categories.push(category);
+        const color = getPointColor(point);
+        colors.push(color.r, color.g, color.b);
+    });
+    
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    
+    pointsMaterial = new THREE.PointsMaterial({
+        size: 1,  // Default point size
+        vertexColors: true,
+        opacity: config.visualization.default_opacity,
+        transparent: true,
+        sizeAttenuation: true
+    });
+    
+    points = new THREE.Points(geometry, pointsMaterial);
+    scene.add(points);
+}
+
+function getTopicColor(clusterId) {
+    // Generate a color based on cluster ID
+    const hue = (clusterId * 137.5) % 360; // Golden angle for good color distribution
+    const color = new THREE.Color();
+    color.setHSL(hue / 360, 0.7, 0.5);
+    return [color.r, color.g, color.b];
+}
+
+function getPointColor(point) {
+    if (colorMode === 'outcomes') {
+        // Check if we're in zero-presence mode with category filters
+        const isZeroPresenceMode = outcomesConfig.some(o => o.mode === 'zero_presence');
+        
+        if (isZeroPresenceMode && typeof getVisibleCategories === 'function') {
+            const visible = getVisibleCategories();
+            const val1 = point[outcomesConfig[0].name];
+            const val2 = point[outcomesConfig[1].name];
+            const present1 = val1 !== 0;
+            const present2 = val2 !== 0;
+            
+            // Check agreement/disagreement status
+            const isAgreement = (present1 === present2);
+            const isDisagreement = (present1 !== present2);
+            
+            // Determine category
+            const cat = getPointCategory(point);
+            
+            // First priority: Agreement/Disagreement highlighting
+            if (visible.show_agreement && isAgreement) {
+                const color = categoryColors['agreement'] || [0.0, 0.9, 0.0];
+                return new THREE.Color(color[0], color[1], color[2]);
+            } else if (visible.show_disagreement && isDisagreement) {
+                const color = categoryColors['disagreement'] || [1.0, 0.0, 0.0];
+                return new THREE.Color(color[0], color[1], color[2]);
+            } else {
+                // Second priority: Category visibility
+                if ((cat === 'both_absent' && visible.both_absent) ||
+                    (cat === 'first_present' && visible.first_present) ||
+                    (cat === 'second_present' && visible.second_present) ||
+                    (cat === 'both_present' && visible.both_present)) {
+                    const color = categoryColors[cat] || [0.5, 0.5, 0.5];
+                    return new THREE.Color(color[0], color[1], color[2]);
+                } else {
+                    // Category not visible - return gray
+                    return new THREE.Color(0.3, 0.3, 0.3);
+                }
+            }
+        } else {
+            // Standard outcome coloring
+            const category = getPointCategory(point);
+            const color = categoryColors[category] || [0.5, 0.5, 0.5];
+            return new THREE.Color(color[0], color[1], color[2]);
+        }
+    } else if (colorMode === 'topics') {
+        // Color by topic cluster
+        const topicColor = getTopicColor(point.cluster_id);
+        return new THREE.Color(topicColor[0], topicColor[1], topicColor[2]);
+    } else if (colorMode === 'pc_gradient') {
+        // Color by PC gradient
+        const selectedPC = parseInt(document.getElementById('pc-select').value);
+        if (!isNaN(selectedPC) && point.all_pc_values && point.all_pc_values[selectedPC] !== undefined) {
+            const pcValue = point.all_pc_values[selectedPC];
+            // Use percentile for better normalization
+            const percentile = point.all_pc_percentiles ? point.all_pc_percentiles[selectedPC] : 50;
+            const normalizedValue = percentile / 100; // 0 to 1
+            
+            // Create gradient from purple (low) to yellow (high)
+            if (normalizedValue < 0.5) {
+                // Purple to blue to green (0 to 0.5)
+                const t = normalizedValue * 2;
+                const r = 0.58 * (1 - t) + 0 * t;
+                const g = 0 * (1 - t) + 1 * t;
+                const b = 0.83;
+                return new THREE.Color(r, g, b);
+            } else {
+                // Green to yellow (0.5 to 1)
+                const t = (normalizedValue - 0.5) * 2;
+                const r = 0 * (1 - t) + 1 * t;
+                const g = 1;
+                const b = 0.83 * (1 - t) + 0 * t;
+                return new THREE.Color(r, g, b);
+            }
+        }
+    }
+    return new THREE.Color(0.5, 0.5, 0.5);
+}
+
+function getPointCategory(point) {
+    const outcome1 = outcomesConfig[0];
+    const outcome2 = outcomesConfig[1];
+    
+    const val1 = point[outcome1.name];
+    const val2 = point[outcome2.name];
+    
+    // Check if either outcome is in zero-presence mode
+    const isZeroPresenceMode = (outcome1.mode === 'zero_presence' || outcome2.mode === 'zero_presence');
+    
+    if (isZeroPresenceMode) {
+        // Zero-presence mode categorization
+        const present1 = val1 !== 0;
+        const present2 = val2 !== 0;
+        
+        if (!present1 && !present2) return 'both_absent';
+        if (present1 && !present2) return 'first_present';
+        if (!present1 && present2) return 'second_present';
+        if (present1 && present2) return 'both_present';
+    } else {
+        // Continuous mode categorization
+        const high1 = val1 > outcome1.thresholds.high;
+        const low1 = val1 < outcome1.thresholds.low;
+        const high2 = val2 > outcome2.thresholds.high;
+        const low2 = val2 < outcome2.thresholds.low;
+        
+        if (high1 && high2) return 'both_high';
+        if (high1 && low2) return 'first_high';
+        if (low1 && high2) return 'second_high';
+        if (low1 && low2) return 'both_low';
+        return 'middle';
+    }
+}
+
+function getTopicColor(clusterId) {
+    // Generate distinct colors for topics
+    const hue = (clusterId * 137.5) % 360;
+    const color = new THREE.Color().setHSL(hue / 360, 0.7, 0.5);
+    return [color.r, color.g, color.b];
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function onMouseMove(event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+}
+
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    // Handle camera animation
+    if (isAnimating) {
+        const elapsed = Date.now() - animationStartTime;
+        const progress = Math.min(elapsed / animationDuration, 1);
+        const easedProgress = easeInOutCubic(progress);
+        
+        // Interpolate camera position
+        camera.position.lerpVectors(
+            animationStart.cameraPos,
+            animationEnd.cameraPos,
+            easedProgress
+        );
+        
+        // Interpolate look-at target
+        controls.target.lerpVectors(
+            animationStart.targetPos,
+            animationEnd.targetPos,
+            easedProgress
+        );
+        
+        if (progress >= 1) {
+            isAnimating = false;
+            if (returningToOverview) {
+                returningToOverview = false;
+            }
+        }
+    }
+    
+    controls.update();
+    
+    // Update dynamic topic visibility
+    if (typeof updateVisibleTopics === 'function') {
+        updateVisibleTopics();
+    }
+    
+    // Update topic label scaling based on distance
+    if (typeof updateTopicLabelScaling === 'function') {
+        updateTopicLabelScaling();
+    }
+    
+    // Update hover detection
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(points);
+    
+    if (intersects.length > 0 && !galleryMode) {
+        const index = intersects[0].index;
+        hoveredPoint = data[index];
+        document.body.style.cursor = 'pointer';
+        
+        // Update cursor hover state
+        if (typeof updateCursorHover === 'function') {
+            updateCursorHover(true);
+        }
+        
+        // Show essay on hover using the showEssay function
+        if (typeof showEssay === 'function') {
+            showEssay(hoveredPoint, intersects[0].index);
+        }
+    } else {
+        hoveredPoint = null;
+        document.body.style.cursor = 'none';
+        
+        // Update cursor hover state
+        if (typeof updateCursorHover === 'function') {
+            updateCursorHover(false);
+        }
+        
+        if (!galleryMode) {
+            const textDisplay = document.getElementById('text-display');
+            if (textDisplay) {
+                textDisplay.style.display = 'none';
+            }
+        }
+    }
+    
+    renderer.render(scene, camera);
+}
+
+// Initialize on load
+init();
+
+// Initialize categories and counts after scene is ready
+setTimeout(() => {
+    updateCategories();
+    // Notify that scene is ready for topic visibility updates
+    if (typeof updateTopicVisibility === 'function') {
+        // Check if topics should be shown based on initial checkbox state (inverted logic)
+        const showTopicsElement = document.getElementById('toggle-topics');
+        if (showTopicsElement && !showTopicsElement.checked) {  // Show topics when NOT checked
+            updateTopicVisibility();
+        }
+    }
+    
+    // Initialize PC0 as default selection
+    const pcSelect = document.getElementById('pc-select');
+    if (pcSelect && pcSelect.value === '0') {
+        handlePCSelectChange();
+    }
+}, 100);

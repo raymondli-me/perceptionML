@@ -1,0 +1,432 @@
+// PCA Advanced Statistics Display Functions
+
+function populatePCStats() {
+    const content = document.getElementById('pc-effects-content');
+    if (!content) return;
+    
+    const selectedPC = parseInt(document.getElementById('pc-select').value);
+    if (isNaN(selectedPC)) {
+        content.innerHTML = '<p>Please select a PC from the dropdown.</p>';
+        return;
+    }
+    
+    // Create navigation header
+    let html = `
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+            <button onclick="navigatePC(-1)" style="padding: 5px 10px; font-size: 16px;">◀</button>
+            <h4 style="margin: 0;">PC${selectedPC} Profile Statistics (Top/Bottom 10%)</h4>
+            <button onclick="navigatePC(1)" style="padding: 5px 10px; font-size: 16px;">▶</button>
+        </div>
+    `;
+    
+    // Check if we have the required data
+    // Convert to string since pcStatsData uses string keys
+    const pcKey = selectedPC.toString();
+    if (!pcStatsData || !pcStatsData[pcKey]) {
+        html += '<p>No detailed statistics available for this PC.</p>';
+        content.innerHTML = html;
+        return;
+    }
+    
+    const pcData = pcStatsData[pcKey];
+    console.log('PC Stats Data for PC', selectedPC, ':', pcData);
+    const xName = outcomesConfig[1]?.display_name || 'X';
+    const yName = outcomesConfig[0]?.display_name || 'Y';
+    
+    // Create main table
+    html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+    html += '<thead>';
+    // Check modes for header labels
+    const xMode = pcData.extreme_analysis?.x_mode || 'continuous';
+    const yMode = pcData.extreme_analysis?.y_mode || 'continuous';
+    
+    html += '<tr style="border-bottom: 2px solid #666;">';
+    html += '<th style="text-align: left; padding: 8px; width: 25%;">Metric</th>';
+    html += '<th style="text-align: center; padding: 8px;">Value</th>';
+    
+    if (xMode === 'zero_presence') {
+        html += `<th style="text-align: center; padding: 8px;">% ${xName} Present</th>`;
+        html += `<th style="text-align: center; padding: 8px;">% ${xName} Absent</th>`;
+    } else {
+        html += `<th style="text-align: center; padding: 8px;">% High ${xName}</th>`;
+        html += `<th style="text-align: center; padding: 8px;">% Low ${xName}</th>`;
+    }
+    
+    if (yMode === 'zero_presence') {
+        html += `<th style="text-align: center; padding: 8px;">% ${yName} Present</th>`;
+        html += `<th style="text-align: center; padding: 8px;">% ${yName} Absent</th>`;
+    } else {
+        html += `<th style="text-align: center; padding: 8px;">% High ${yName}</th>`;
+        html += `<th style="text-align: center; padding: 8px;">% Low ${yName}</th>`;
+    }
+    
+    html += '</tr>';
+    html += '</thead>';
+    html += '<tbody>';
+    
+    // Variance Explained row
+    html += '<tr style="border-bottom: 1px solid #444;">';
+    html += '<td style="padding: 8px; font-weight: bold;">Variance Explained</td>';
+    const variance = pcVarianceExplained && pcVarianceExplained[selectedPC] ? 
+        (pcVarianceExplained[selectedPC] * 100).toFixed(2) + '%' : 'N/A';
+    html += `<td style="text-align: center; padding: 8px;">${variance}</td>`;
+    html += '<td colspan="4" style="text-align: center; padding: 8px; color: #666;">-</td>';
+    html += '</tr>';
+    
+    // SHAP Rankings row
+    if (pcData.rankings) {
+        html += '<tr style="border-bottom: 1px solid #444;">';
+        html += '<td style="padding: 8px; font-weight: bold;">SHAP Rank (Avg/Med)</td>';
+        html += '<td style="text-align: center; padding: 8px;">-</td>';
+        html += `<td colspan="2" style="text-align: center; padding: 8px;">${xName}: #${pcData.rankings.x_avg_rank || 'N/A'}/#${pcData.rankings.x_median_rank || 'N/A'}</td>`;
+        html += `<td colspan="2" style="text-align: center; padding: 8px;">${yName}: #${pcData.rankings.y_avg_rank || 'N/A'}/#${pcData.rankings.y_median_rank || 'N/A'}</td>`;
+        html += '</tr>';
+    }
+    
+    // XGBoost Variable Importance row
+    {% if pc_selection_info %}
+    const pcSelectionInfo = {{ pc_selection_info }};
+    if (pcSelectionInfo && pcSelectionInfo.xgb_scores) {
+        const xgbImportance = pcSelectionInfo.xgb_scores[selectedPC];
+        // Calculate global rank from sorted scores
+        const sortedIndices = [...Array(pcSelectionInfo.xgb_scores.length).keys()]
+            .sort((a, b) => pcSelectionInfo.xgb_scores[b] - pcSelectionInfo.xgb_scores[a]);
+        const globalRank = sortedIndices.indexOf(selectedPC) + 1;
+        
+        html += '<tr style="border-bottom: 1px solid #444;">';
+        html += '<td style="padding: 8px; font-weight: bold;">XGBoost Importance</td>';
+        html += `<td style="text-align: center; padding: 8px;">${xgbImportance ? xgbImportance.toFixed(4) : 'N/A'}</td>`;
+        html += `<td colspan="4" style="text-align: center; padding: 8px;">Rank: #${globalRank}/200</td>`;
+        html += '</tr>';
+    }
+    {% endif %}
+    
+    // If High PC row (extreme analysis)
+    if (pcData.extreme_analysis) {
+        // Check if we're in zero-presence mode
+        const xMode = pcData.extreme_analysis.x_mode || 'continuous';
+        const yMode = pcData.extreme_analysis.y_mode || 'continuous';
+        
+        html += '<tr style="border-bottom: 1px solid #444; background: rgba(76, 175, 80, 0.1);">';
+        html += '<td style="padding: 8px; font-weight: bold;">If High PC (P90)</td>';
+        html += '<td style="text-align: center; padding: 8px;">-</td>';
+        
+        // X values
+        if (xMode === 'zero_presence') {
+            // Present X probability (for zero-presence mode)
+            const presentX_ifHigh = pcData.extreme_analysis.present_x?.if_high_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${presentX_ifHigh.toFixed(1)}%</td>`;
+            
+            // Absent X probability
+            const absentX_ifHigh = pcData.extreme_analysis.absent_x?.if_high_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${absentX_ifHigh.toFixed(1)}%</td>`;
+        } else {
+            // High X probability (continuous mode)
+            const highX_ifHigh = pcData.extreme_analysis.high_x?.if_high_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${highX_ifHigh.toFixed(1)}%</td>`;
+            
+            // Low X probability
+            const lowX_ifHigh = pcData.extreme_analysis.low_x?.if_high_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${lowX_ifHigh.toFixed(1)}%</td>`;
+        }
+        
+        // Y values
+        if (yMode === 'zero_presence') {
+            // Present Y probability (for zero-presence mode)
+            const presentY_ifHigh = pcData.extreme_analysis.present_y?.if_high_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${presentY_ifHigh.toFixed(1)}%</td>`;
+            
+            // Absent Y probability
+            const absentY_ifHigh = pcData.extreme_analysis.absent_y?.if_high_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${absentY_ifHigh.toFixed(1)}%</td>`;
+        } else {
+            // High Y probability (continuous mode)
+            const highY_ifHigh = pcData.extreme_analysis.high_y?.if_high_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${highY_ifHigh.toFixed(1)}%</td>`;
+            
+            // Low Y probability
+            const lowY_ifHigh = pcData.extreme_analysis.low_y?.if_high_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${lowY_ifHigh.toFixed(1)}%</td>`;
+        }
+        
+        html += '</tr>';
+        
+        // If Low PC row
+        html += '<tr style="border-bottom: 1px solid #444; background: rgba(244, 67, 54, 0.1);">';
+        html += '<td style="padding: 8px; font-weight: bold;">If Low PC (P10)</td>';
+        html += '<td style="text-align: center; padding: 8px;">-</td>';
+        
+        // X values
+        if (xMode === 'zero_presence') {
+            // Present X probability (for zero-presence mode)
+            const presentX_ifLow = pcData.extreme_analysis.present_x?.if_low_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${presentX_ifLow.toFixed(1)}%</td>`;
+            
+            // Absent X probability
+            const absentX_ifLow = pcData.extreme_analysis.absent_x?.if_low_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${absentX_ifLow.toFixed(1)}%</td>`;
+        } else {
+            // High X probability (continuous mode)
+            const highX_ifLow = pcData.extreme_analysis.high_x?.if_low_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${highX_ifLow.toFixed(1)}%</td>`;
+            
+            // Low X probability
+            const lowX_ifLow = pcData.extreme_analysis.low_x?.if_low_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${lowX_ifLow.toFixed(1)}%</td>`;
+        }
+        
+        // Y values
+        if (yMode === 'zero_presence') {
+            // Present Y probability (for zero-presence mode)
+            const presentY_ifLow = pcData.extreme_analysis.present_y?.if_low_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${presentY_ifLow.toFixed(1)}%</td>`;
+            
+            // Absent Y probability
+            const absentY_ifLow = pcData.extreme_analysis.absent_y?.if_low_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${absentY_ifLow.toFixed(1)}%</td>`;
+        } else {
+            // High Y probability (continuous mode)
+            const highY_ifLow = pcData.extreme_analysis.high_y?.if_low_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${highY_ifLow.toFixed(1)}%</td>`;
+            
+            // Low Y probability
+            const lowY_ifLow = pcData.extreme_analysis.low_y?.if_low_pc || 0;
+            html += `<td style="text-align: center; padding: 8px;">${lowY_ifLow.toFixed(1)}%</td>`;
+        }
+        
+        html += '</tr>';
+        
+        // Calculate differences based on mode
+        let diffHighX, diffLowX, diffHighY, diffLowY;
+        
+        if (xMode === 'zero_presence') {
+            const presentX_ifHigh = pcData.extreme_analysis.present_x?.if_high_pc || 0;
+            const presentX_ifLow = pcData.extreme_analysis.present_x?.if_low_pc || 0;
+            const absentX_ifHigh = pcData.extreme_analysis.absent_x?.if_high_pc || 0;
+            const absentX_ifLow = pcData.extreme_analysis.absent_x?.if_low_pc || 0;
+            diffHighX = presentX_ifHigh - presentX_ifLow;  // Present difference
+            diffLowX = absentX_ifHigh - absentX_ifLow;     // Absent difference
+        } else {
+            const highX_ifHigh = pcData.extreme_analysis.high_x?.if_high_pc || 0;
+            const highX_ifLow = pcData.extreme_analysis.high_x?.if_low_pc || 0;
+            const lowX_ifHigh = pcData.extreme_analysis.low_x?.if_high_pc || 0;
+            const lowX_ifLow = pcData.extreme_analysis.low_x?.if_low_pc || 0;
+            diffHighX = highX_ifHigh - highX_ifLow;
+            diffLowX = lowX_ifHigh - lowX_ifLow;
+        }
+        
+        if (yMode === 'zero_presence') {
+            const presentY_ifHigh = pcData.extreme_analysis.present_y?.if_high_pc || 0;
+            const presentY_ifLow = pcData.extreme_analysis.present_y?.if_low_pc || 0;
+            const absentY_ifHigh = pcData.extreme_analysis.absent_y?.if_high_pc || 0;
+            const absentY_ifLow = pcData.extreme_analysis.absent_y?.if_low_pc || 0;
+            diffHighY = presentY_ifHigh - presentY_ifLow;  // Present difference
+            diffLowY = absentY_ifHigh - absentY_ifLow;     // Absent difference
+        } else {
+            const highY_ifHigh = pcData.extreme_analysis.high_y?.if_high_pc || 0;
+            const highY_ifLow = pcData.extreme_analysis.high_y?.if_low_pc || 0;
+            const lowY_ifHigh = pcData.extreme_analysis.low_y?.if_high_pc || 0;
+            const lowY_ifLow = pcData.extreme_analysis.low_y?.if_low_pc || 0;
+            diffHighY = highY_ifHigh - highY_ifLow;
+            diffLowY = lowY_ifHigh - lowY_ifLow;
+        }
+        
+        // Difference row - PC effect on outcomes (WITH coloring for differences)
+        html += '<tr style="border-bottom: 2px solid #666;">';
+        html += '<td style="padding: 8px; font-weight: bold;">Difference (High-Low PC)</td>';
+        html += '<td style="text-align: center; padding: 8px;">-</td>';
+        html += `<td style="text-align: center; padding: 8px; ${getDifferenceStyle(diffHighX)}">${diffHighX > 0 ? '+' : ''}${diffHighX.toFixed(1)}%</td>`;
+        html += `<td style="text-align: center; padding: 8px; ${getDifferenceStyle(diffLowX)}">${diffLowX > 0 ? '+' : ''}${diffLowX.toFixed(1)}%</td>`;
+        html += `<td style="text-align: center; padding: 8px; ${getDifferenceStyle(diffHighY)}">${diffHighY > 0 ? '+' : ''}${diffHighY.toFixed(1)}%</td>`;
+        html += `<td style="text-align: center; padding: 8px; ${getDifferenceStyle(diffLowY)}">${diffLowY > 0 ? '+' : ''}${diffLowY.toFixed(1)}%</td>`;
+        html += '</tr>';
+        
+        // Only show outcome difference rows for continuous mode
+        if (xMode === 'continuous' && yMode === 'continuous') {
+            // Need to re-extract these values since they're defined in the else block above
+            const highX_ifHigh = pcData.extreme_analysis.high_x?.if_high_pc || 0;
+            const highX_ifLow = pcData.extreme_analysis.high_x?.if_low_pc || 0;
+            const lowX_ifHigh = pcData.extreme_analysis.low_x?.if_high_pc || 0;
+            const lowX_ifLow = pcData.extreme_analysis.low_x?.if_low_pc || 0;
+            const highY_ifHigh = pcData.extreme_analysis.high_y?.if_high_pc || 0;
+            const highY_ifLow = pcData.extreme_analysis.high_y?.if_low_pc || 0;
+            const lowY_ifHigh = pcData.extreme_analysis.low_y?.if_high_pc || 0;
+            const lowY_ifLow = pcData.extreme_analysis.low_y?.if_low_pc || 0;
+            
+            // New row: Outcome differences conditional on High PC (colored)
+            const diffX_ifHigh = highX_ifHigh - lowX_ifHigh;  // Diff between High X and Low X when PC is high
+            const diffY_ifHigh = highY_ifHigh - lowY_ifHigh;  // Diff between High Y and Low Y when PC is high
+            
+            html += '<tr style="border-bottom: 1px solid #444;">';
+            html += '<td style="padding: 8px; font-weight: bold;">Outcome Diff | High PC</td>';
+            html += '<td style="text-align: center; padding: 8px;">-</td>';
+            html += `<td colspan="2" style="text-align: center; padding: 8px; ${getDifferenceStyle(diffX_ifHigh)}">${xName}: ${diffX_ifHigh > 0 ? '+' : ''}${diffX_ifHigh.toFixed(1)}%</td>`;
+            html += `<td colspan="2" style="text-align: center; padding: 8px; ${getDifferenceStyle(diffY_ifHigh)}">${yName}: ${diffY_ifHigh > 0 ? '+' : ''}${diffY_ifHigh.toFixed(1)}%</td>`;
+            html += '</tr>';
+            
+            // New row: Outcome differences conditional on Low PC (colored)
+            const diffX_ifLow = highX_ifLow - lowX_ifLow;  // Diff between High X and Low X when PC is low
+            const diffY_ifLow = highY_ifLow - lowY_ifLow;  // Diff between High Y and Low Y when PC is low
+            
+            html += '<tr style="border-bottom: 2px solid #666;">';
+            html += '<td style="padding: 8px; font-weight: bold;">Outcome Diff | Low PC</td>';
+            html += '<td style="text-align: center; padding: 8px;">-</td>';
+            html += `<td colspan="2" style="text-align: center; padding: 8px; ${getDifferenceStyle(diffX_ifLow)}">${xName}: ${diffX_ifLow > 0 ? '+' : ''}${diffX_ifLow.toFixed(1)}%</td>`;
+            html += `<td colspan="2" style="text-align: center; padding: 8px; ${getDifferenceStyle(diffY_ifLow)}">${yName}: ${diffY_ifLow > 0 ? '+' : ''}${diffY_ifLow.toFixed(1)}%</td>`;
+            html += '</tr>';
+        }
+    }
+    
+    html += '</tbody>';
+    html += '</table>';
+    
+    // Topic-PC Associations section
+    if (pcData.topic_associations && pcData.topic_associations.length > 0) {
+        html += '<h5 style="margin-top: 20px; margin-bottom: 10px;">Topic-PC Associations</h5>';
+        html += '<p style="font-size: 11px; color: #999; margin-bottom: 10px;">Statistical comparison of PC values for topic members vs non-members (ranked by average percentile)</p>';
+        html += `<p style="font-size: 11px; color: #999; margin-bottom: 10px;">Showing ALL ${pcData.topic_associations.length} topics</p>`;
+        
+        // Simple table without scrollable container
+        html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px;">'; 
+        html += '<thead>';
+        html += '<tr style="border-bottom: 1px solid #666;">';
+        html += '<th style="text-align: left; padding: 8px;">Topic (Keywords)</th>';
+        html += '<th style="text-align: center; padding: 8px;">Size</th>';
+        html += '<th style="text-align: center; padding: 8px;">Avg %tile</th>';
+        html += '<th style="text-align: center; padding: 8px;">Std Dev</th>';
+        html += '<th style="text-align: center; padding: 8px;">t-stat</th>';
+        html += '<th style="text-align: center; padding: 8px;">p-value</th>';
+        html += '</tr>';
+        html += '</thead>';
+        html += '<tbody>';
+        
+        // Show ALL topics (already sorted by avg_percentile in backend)
+        const allTopics = pcData.topic_associations;
+        allTopics.forEach((topic, index) => {
+            const keywords = topic.keywords || `Topic ${topic.topic_id}`;
+            // Show all keywords since table is wide enough
+            const shortKeywords = keywords;
+            
+            // Color code the percentile
+            let percentileColor = '';
+            if (topic.avg_percentile >= 80) {
+                percentileColor = 'color: #90EE90; font-weight: bold;'; // Green for very high
+            } else if (topic.avg_percentile >= 70) {
+                percentileColor = 'color: #8BC34A;'; // Light green
+            } else if (topic.avg_percentile <= 20) {
+                percentileColor = 'color: #f44336; font-weight: bold;'; // Red for very low
+            } else if (topic.avg_percentile <= 30) {
+                percentileColor = 'color: #FF9800;'; // Orange
+            }
+            
+            // Format t-statistic with color
+            const tStat = topic.t_statistic || 0;
+            let tStatColor = '';
+            if (Math.abs(tStat) >= 3) {
+                tStatColor = 'color: #90EE90; font-weight: bold;'; // Green for strong effect
+            } else if (Math.abs(tStat) >= 2) {
+                tStatColor = 'color: #CDDC39;'; // Yellow-green for moderate
+            }
+            
+            // Format p-value with significance indicators
+            const pValue = topic.p_value || 1;
+            let pValueText = '';
+            let pValueColor = '';
+            if (pValue < 0.001) {
+                pValueText = '<0.001***';
+                pValueColor = 'color: #90EE90; font-weight: bold;';
+            } else if (pValue < 0.01) {
+                pValueText = pValue.toFixed(3) + '**';
+                pValueColor = 'color: #8BC34A; font-weight: bold;';
+            } else if (pValue < 0.05) {
+                pValueText = pValue.toFixed(3) + '*';
+                pValueColor = 'color: #CDDC39;';
+            } else {
+                pValueText = pValue.toFixed(3);
+                pValueColor = 'color: #999;';
+            }
+            
+            html += '<tr style="border-bottom: 1px solid #444;">';
+            html += `<td style="padding: 8px;" title="${keywords}">${shortKeywords}</td>`;
+            html += `<td style="text-align: center; padding: 8px;">${topic.size}</td>`;
+            html += `<td style="text-align: center; padding: 8px; ${percentileColor}">${topic.avg_percentile.toFixed(1)}</td>`;
+            html += `<td style="text-align: center; padding: 8px; color: #999;">±${topic.std_percentile.toFixed(1)}</td>`;
+            html += `<td style="text-align: center; padding: 8px; ${tStatColor}">${tStat.toFixed(2)}</td>`;
+            html += `<td style="text-align: center; padding: 8px; ${pValueColor}">${pValueText}</td>`;
+            html += '</tr>';
+        });
+        
+        html += '</tbody>';
+        html += '</table>';
+    }
+    
+    // Footnotes
+    html += '<div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; font-size: 11px; color: #999;">';
+    html += '<p style="margin: 5px 0;"><strong>Note:</strong></p>';
+    html += '<ul style="margin: 5px 0; padding-left: 20px;">';
+    html += '<li>High PC: Top 10% (P90) of PC values</li>';
+    html += '<li>Low PC: Bottom 10% (P10) of PC values</li>';
+    html += '<li>SHAP rankings are out of 200 total PCs (lower is more important)</li>';
+    html += '<li>XGBoost importance shows global rank out of 200 PCs</li>';
+    
+    // Add mode-specific notes
+    if (pcData.extreme_analysis && (pcData.extreme_analysis.y_mode === 'zero_presence' || pcData.extreme_analysis.x_mode === 'zero_presence')) {
+        html += '<li>For zero-presence outcomes: "Present" = non-zero values, "Absent" = zero values</li>';
+        html += '<li>Percentages show the proportion of samples with non-zero (present) values</li>';
+    } else {
+        html += '<li>Outcome Diff shows the difference between high and low outcome probabilities conditional on PC value</li>';
+        html += '<li>Outcome differences are color-coded: <span style="color: #90EE90;">Bright green (≥30%)</span>, <span style="color: #8BC34A;">Light green (≥20%)</span>, <span style="color: #CDDC39;">Yellow-green (≥10%)</span></li>';
+    }
+    
+    html += '<li>Topic associations: Welch\'s t-test (unequal variance) compares PC values for topic members vs non-members</li>';
+    html += '<li>Significance levels: *** p<0.001, ** p<0.01, * p<0.05</li>';
+    html += '</ul>';
+    html += '</div>';
+    
+    content.innerHTML = html;
+}
+
+function getPercentageStyle(pct) {
+    // This function is used for PCA stats - we can keep it simpler than topic stats
+    if (pct >= 30) {
+        return 'color: #ff5252; font-weight: bold;'; // Red for very high
+    } else if (pct >= 20) {
+        return 'color: #ff9800; font-weight: bold;'; // Orange for high
+    } else if (pct >= 15) {
+        return 'color: #ffeb3b;'; // Yellow for moderate
+    }
+    return ''; // Default color for low percentages
+}
+
+function getDifferenceStyle(diff) {
+    // Color based on magnitude of difference
+    const absDiff = Math.abs(diff);
+    if (absDiff >= 30) {
+        return 'color: #90EE90; font-weight: bold;'; // Bright green for large differences
+    } else if (absDiff >= 20) {
+        return 'color: #8BC34A; font-weight: bold;'; // Light green for moderate differences
+    } else if (absDiff >= 10) {
+        return 'color: #CDDC39;'; // Yellow-green for small differences
+    }
+    return ''; // Default color for very small differences
+}
+
+// Navigation functions for PC selection
+window.navigatePC = function(direction) {
+    const pcSelect = document.getElementById('pc-select');
+    const currentPC = parseInt(pcSelect.value);
+    
+    if (isNaN(currentPC)) {
+        pcSelect.value = '0';
+    } else {
+        let newPC = currentPC + direction;
+        // Assuming 200 PCs (0-199)
+        if (newPC < 0) newPC = 199;
+        if (newPC > 199) newPC = 0;
+        pcSelect.value = newPC.toString();
+    }
+    
+    // Trigger the change event
+    handlePCSelectChange();
+    populatePCStats();
+}

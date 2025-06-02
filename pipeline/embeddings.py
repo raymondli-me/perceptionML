@@ -181,19 +181,34 @@ class EmbeddingGenerator:
             def process_on_gpu(gpu_id, texts_subset):
                 """Process a subset of texts on a specific GPU."""
                 try:
+                    # Set device context and ensure proper synchronization
+                    torch.cuda.set_device(gpu_id)
                     with torch.cuda.device(gpu_id):
+                        # Clear cache before processing
+                        torch.cuda.empty_cache()
+                        
                         with torch.cuda.amp.autocast(dtype=torch.float16):
                             embeddings = self.models[gpu_id].encode(
                                 texts_subset,
                                 instruction=instruction,
                                 max_length=max_length
                             )
+                        
+                        # Synchronize to ensure computation is complete
+                        torch.cuda.synchronize(device=gpu_id)
+                    
                     # Convert to numpy
                     if hasattr(embeddings, 'cpu'):
                         embeddings = embeddings.cpu().numpy()
                     else:
                         embeddings = np.array(embeddings)
                     return embeddings
+                except torch.cuda.OutOfMemoryError as e:
+                    print(f"GPU {gpu_id} out of memory. Clearing cache and retrying with smaller batch...")
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize(device=gpu_id)
+                    # Return zeros on OOM - let the main loop handle retry
+                    return np.zeros((len(texts_subset), 4096))
                 except Exception as e:
                     print(f"GPU {gpu_id} failed: {str(e)[:100]}")
                     # Return zeros on failure
@@ -261,8 +276,74 @@ class EmbeddingGenerator:
                         
                         all_embeddings.append(embeddings)
                         
+                    except torch.cuda.OutOfMemoryError as oom_e:
+                        print(f"\n❌ GPU OUT OF MEMORY on batch {i//effective_batch_size}")
+                        print(f"   Current batch size: {len(batch)}")
+                        
+                        # Try to recover by processing smaller sub-batches
+                        print("   Attempting recovery with smaller sub-batches...")
+                        torch.cuda.empty_cache()
+                        
+                        sub_batch_size = max(1, len(batch) // 4)  # Try 1/4 of the batch
+                        sub_embeddings = []
+                        failed_texts = []
+                        
+                        for j in range(0, len(batch), sub_batch_size):
+                            sub_batch = batch[j:j + sub_batch_size]
+                            try:
+                                if self.device.type == 'cuda':
+                                    with torch.cuda.amp.autocast(dtype=torch.float16):
+                                        sub_emb = self.model.encode(
+                                            sub_batch,
+                                            instruction=instruction,
+                                            max_length=max_length
+                                        )
+                                else:
+                                    sub_emb = self.model.encode(
+                                        sub_batch,
+                                        instruction=instruction,
+                                        max_length=max_length
+                                    )
+                                
+                                if hasattr(sub_emb, 'cpu'):
+                                    sub_emb = sub_emb.cpu().numpy()
+                                else:
+                                    sub_emb = np.array(sub_emb)
+                                
+                                sub_embeddings.append(sub_emb)
+                                print(f"   ✓ Recovered sub-batch {j//sub_batch_size + 1}")
+                            except Exception as sub_e:
+                                print(f"   ❌ Sub-batch {j//sub_batch_size + 1} still failed")
+                                failed_texts.extend(sub_batch)
+                                # Determine embedding dimension
+                                if sub_embeddings:
+                                    embedding_dim = sub_embeddings[0].shape[1]
+                                elif all_embeddings:
+                                    embedding_dim = all_embeddings[-1].shape[1]
+                                else:
+                                    embedding_dim = 4096
+                                sub_embeddings.append(np.zeros((len(sub_batch), embedding_dim)))
+                        
+                        if failed_texts:
+                            print(f"\n⚠️  WARNING: {len(failed_texts)} texts failed to embed and were set to zeros")
+                            print(f"   This may significantly impact your analysis quality!")
+                            print(f"   Consider reducing batch size with --batch-size flag")
+                        
+                        if sub_embeddings:
+                            all_embeddings.append(np.vstack(sub_embeddings))
+                        else:
+                            # Complete failure - create zeros
+                            if all_embeddings:
+                                embedding_dim = all_embeddings[-1].shape[1]
+                            else:
+                                embedding_dim = 4096
+                            all_embeddings.append(np.zeros((len(batch), embedding_dim)))
+                            
                     except Exception as e:
-                        print(f"Warning: Batch {i//effective_batch_size} failed: {str(e)[:100]}")
+                        print(f"\n❌ ERROR: Batch {i//effective_batch_size} failed: {str(e)}")
+                        print(f"   This is likely due to an unexpected error.")
+                        print(f"   Creating zero embeddings for this batch...")
+                        
                         # Create zero embeddings for failed batch
                         if all_embeddings:
                             embedding_dim = all_embeddings[-1].shape[1]
@@ -272,7 +353,9 @@ class EmbeddingGenerator:
                                 embedding_dim = test_emb.shape[-1]
                             except:
                                 embedding_dim = 4096
+                        
                         all_embeddings.append(np.zeros((len(batch), embedding_dim)))
+                        print(f"   ⚠️  Added {len(batch)} zero embeddings")
             
             embeddings = np.vstack(all_embeddings)
         
@@ -340,7 +423,12 @@ class EmbeddingGenerator:
             def process_on_gpu(gpu_id, texts_subset):
                 """Process a subset of texts on a specific GPU."""
                 try:
+                    # Set device context and ensure proper synchronization
+                    torch.cuda.set_device(gpu_id)
                     with torch.cuda.device(gpu_id):
+                        # Clear cache before processing
+                        torch.cuda.empty_cache()
+                        
                         # Tokenize
                         inputs = self.tokenizer(
                             texts_subset,
@@ -360,9 +448,14 @@ class EmbeddingGenerator:
                                 else:
                                     embeddings = outputs.last_hidden_state.mean(dim=1)
                         
+                        # Synchronize to ensure computation is complete
+                        torch.cuda.synchronize(device=gpu_id)
+                        
                         return embeddings.cpu().numpy()
-                except Exception as e:
-                    print(f"GPU {gpu_id} failed: {str(e)[:100]}")
+                except torch.cuda.OutOfMemoryError as e:
+                    print(f"GPU {gpu_id} out of memory. Clearing cache...")
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize(device=gpu_id)
                     # Try to determine embedding dimension dynamically
                     try:
                         # Try to get a single embedding to determine size

@@ -1,0 +1,22 @@
+# Include template files
+recursive-include pipeline/templates *.html.j2 *.js.j2
+
+# Include config files
+recursive-include pipeline/configs *.yaml *.yml
+
+# Include documentation
+include README.md
+include LICENSE
+
+# Include requirements
+include requirements.txt
+
+# Exclude unnecessary files
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .DS_Store
+recursive-exclude output *
+recursive-exclude checkpoints *
+recursive-exclude data_github *
+recursive-exclude archive *
+recursive-exclude perceptionml_env *

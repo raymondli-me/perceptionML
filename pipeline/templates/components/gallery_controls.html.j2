@@ -1,0 +1,53 @@
+<div id="gallery-controls">
+    <div id="gallery-header" onclick="toggleGalleryControls()" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 5px 0;">
+        <h4 style="margin: 0;">Gallery Mode</h4>
+        <span class="gallery-collapse-icon" style="font-size: 18px; color: #999;">−</span>
+    </div>
+    <div id="gallery-content">
+    {% if outcome_modes and ('zero_presence' in outcome_modes.values()) %}
+    {# Zero-presence mode gallery buttons #}
+    <button class="gallery-button" style="border-color: #ffff00;" onclick="startGallery('both_absent', event)">
+        Both Absent (0, 0)<br>
+        <span class="gallery-count" data-category="both_absent" style="font-size: 10px; opacity: 0.7;">0 items</span>
+    </button>
+    <button class="gallery-button" style="border-color: #ff00ff;" onclick="startGallery('first_present', event)">
+        {{ config.data.outcomes[0].display_name }} Present Only<br>
+        <span class="gallery-count" data-category="first_present" style="font-size: 10px; opacity: 0.7;">0 items</span>
+    </button>
+    <button class="gallery-button" style="border-color: #00ffff;" onclick="startGallery('second_present', event)">
+        {{ config.data.outcomes[1].display_name }} Present Only<br>
+        <span class="gallery-count" data-category="second_present" style="font-size: 10px; opacity: 0.7;">0 items</span>
+    </button>
+    <button class="gallery-button" style="border-color: #00ff00;" onclick="startGallery('both_present', event)">
+        Both Present (>0, >0)<br>
+        <span class="gallery-count" data-category="both_present" style="font-size: 10px; opacity: 0.7;">0 items</span>
+    </button>
+    {% else %}
+    {# Continuous mode gallery buttons #}
+    <button class="gallery-button" style="border-color: #00ff00;" onclick="startGallery('both_high', event)">
+        High {{ config.data.outcomes[1].display_name }} + High {{ config.data.outcomes[0].display_name }}<br>
+        <span class="gallery-count" data-category="both_high" style="font-size: 10px; opacity: 0.7;">0 items</span>
+    </button>
+    <button class="gallery-button" style="border-color: #00ffff;" onclick="startGallery('second_high', event)">
+        High {{ config.data.outcomes[1].display_name }} + Low {{ config.data.outcomes[0].display_name }}<br>
+        <span class="gallery-count" data-category="second_high" style="font-size: 10px; opacity: 0.7;">0 items</span>
+    </button>
+    <button class="gallery-button" style="border-color: #ff00ff;" onclick="startGallery('first_high', event)">
+        Low {{ config.data.outcomes[1].display_name }} + High {{ config.data.outcomes[0].display_name }}<br>
+        <span class="gallery-count" data-category="first_high" style="font-size: 10px; opacity: 0.7;">0 items</span>
+    </button>
+    <button class="gallery-button" style="border-color: #ffff00;" onclick="startGallery('both_low', event)">
+        Low {{ config.data.outcomes[1].display_name }} + Low {{ config.data.outcomes[0].display_name }}<br>
+        <span class="gallery-count" data-category="both_low" style="font-size: 10px; opacity: 0.7;">0 items</span>
+    </button>
+    {% endif %}
+    
+    <div id="gallery-info"></div>
+    
+    <div class="nav-buttons" style="display: none;">
+        <button class="nav-button" onclick="navigateGallery(-1)">← Previous</button>
+        <button class="nav-button" onclick="stopGallery()">Stop</button>
+        <button class="nav-button" onclick="navigateGallery(1)">Next →</button>
+    </div>
+    </div>
+</div>

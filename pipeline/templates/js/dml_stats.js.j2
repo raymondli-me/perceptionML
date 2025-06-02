@@ -1,0 +1,246 @@
+// DML Statistics Display Functions
+
+function getTopPCsByMI() {
+    // Get PC selection info if available
+    {% if pc_selection_info %}
+    const pcSelectionInfo = {{ pc_selection_info }};
+    if (pcSelectionInfo && pcSelectionInfo.mi_indices) {
+        return pcSelectionInfo.mi_indices.slice(0, 6).map(idx => `PC${idx}`).join(', ');
+    }
+    {% endif %}
+    return null;
+}
+
+function getTopPCsByMethod(method) {
+    // Get PC selection info if available
+    {% if pc_selection_info %}
+    const pcSelectionInfo = {{ pc_selection_info }};
+    const methodKey = method + '_indices';
+    if (pcSelectionInfo && pcSelectionInfo[methodKey]) {
+        return pcSelectionInfo[methodKey].map(idx => `PC${idx}`).join(', ');
+    }
+    {% endif %}
+    return null;
+}
+
+function populateDMLStats() {
+    const content = document.getElementById('dml-content');
+    if (!content || !dmlResults) {
+        if (content) {
+            content.innerHTML = '<p>No DML results available.</p>';
+        }
+        return;
+    }
+    
+    let html = '';
+    
+    // Get treatment-outcome pairs
+    const effectPairs = Object.keys(dmlResults).filter(key => key.includes('_to_') && !key.startsWith('r2_'));
+    
+    effectPairs.forEach(key => {
+        const effect = dmlResults[key];
+        const X = effect.treatment;
+        const Y = effect.outcome;
+        
+        html += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #666; border-radius: 8px; min-width: 800px;">`;
+        html += `<h4 style="margin-top: 0; color: #ffffff;">Effect of ${X} on ${Y}</h4>`;
+        
+        // Create table for this effect
+        html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+        
+        // Table header
+        html += `<thead>
+            <tr style="border-bottom: 2px solid #666;">
+                <th style="text-align: left; padding: 8px;">Model</th>
+                <th style="text-align: center; padding: 8px;">θ (${X}→${Y})</th>
+                <th style="text-align: center; padding: 8px;">SE</th>
+                <th style="text-align: center; padding: 8px;">t-stat</th>
+                <th style="text-align: center; padding: 8px;">p-value</th>
+                <th style="text-align: center; padding: 8px;">95% CI</th>
+                <th style="text-align: center; padding: 8px;">Reduction</th>
+            </tr>
+        </thead>`;
+        
+        html += '<tbody>';
+        
+        // A. Naive Model
+        const naive = effect.naive;
+        const naiveTstat = naive.theta / naive.se;
+        html += `<tr style="border-bottom: 1px solid #444;">
+            <td style="padding: 8px; font-weight: bold;">Naive OLS (Y ~ X)</td>
+            <td style="text-align: center; padding: 8px;">${naive.theta.toFixed(3)}</td>
+            <td style="text-align: center; padding: 8px;">${naive.se.toFixed(3)}</td>
+            <td style="text-align: center; padding: 8px;">${naiveTstat.toFixed(2)}</td>
+            <td style="text-align: center; padding: 8px;">${formatPValue(naive.pval)}</td>
+            <td style="text-align: center; padding: 8px;">[${naive.ci_lower.toFixed(3)}, ${naive.ci_upper.toFixed(3)}]</td>
+            <td style="text-align: center; padding: 8px;">-</td>
+        </tr>`;
+        
+        // Add R² and correlation for naive model if available
+        if (naive.r2 !== undefined || naive.correlation !== undefined) {
+            html += `<tr style="border-bottom: 1px solid #444;">
+                <td colspan="7" style="padding: 4px 8px; font-size: 11px; color: #999;">`;
+            if (naive.r2 !== undefined) {
+                html += `R²_Y = ${naive.r2.toFixed(3)}`;
+            }
+            if (naive.correlation !== undefined) {
+                html += `${naive.r2 !== undefined ? ', ' : ''}Corr(X,Y) = ${naive.correlation.toFixed(3)}`;
+            }
+            html += `</td>
+            </tr>`;
+        }
+        
+        // B. DML - Embeddings Model (if available)
+        if (effect.dml_embeddings) {
+            const dmlEmb = effect.dml_embeddings;
+            const dmlEmbTstat = dmlEmb.theta / dmlEmb.se;
+            const reductionEmb = ((1 - Math.abs(dmlEmb.theta) / Math.abs(naive.theta)) * 100).toFixed(1);
+            
+            html += `<tr style="border-bottom: 1px solid #444;">
+                <td style="padding: 8px; font-weight: bold;">DML - Embeddings</td>
+                <td style="text-align: center; padding: 8px;">${dmlEmb.theta.toFixed(3)}</td>
+                <td style="text-align: center; padding: 8px;">${dmlEmb.se.toFixed(3)}</td>
+                <td style="text-align: center; padding: 8px;">${dmlEmbTstat.toFixed(2)}</td>
+                <td style="text-align: center; padding: 8px;">${formatPValue(dmlEmb.pval)}</td>
+                <td style="text-align: center; padding: 8px;">[${dmlEmb.ci_lower.toFixed(3)}, ${dmlEmb.ci_upper.toFixed(3)}]</td>
+                <td style="text-align: center; padding: 8px; color: #ff9800;">${reductionEmb}%</td>
+            </tr>`;
+            
+            // Add model statistics
+            if (dmlEmb.r2_y !== undefined || dmlEmb.r2_x !== undefined) {
+                html += `<tr style="border-bottom: 1px solid #444;">
+                    <td colspan="7" style="padding: 4px 8px; font-size: 11px; color: #999;">
+                        <div>Cross-validated R²: Y = ${dmlEmb.r2_y?.toFixed(3) || 'N/A'}, X = ${dmlEmb.r2_x?.toFixed(3) || 'N/A'}</div>
+                        ${dmlEmb.r2_y_full !== undefined ? `<div>Full dataset R²: Y = ${dmlEmb.r2_y_full?.toFixed(3) || 'N/A'}, X = ${dmlEmb.r2_x_full?.toFixed(3) || 'N/A'}</div>` : ''}
+                        <div>C = ${dmlEmb.corr_resid?.toFixed(3) || 'N/A'}, G = ${dmlEmb.corr_pred?.toFixed(3) || 'N/A'}</div>
+                    </td>
+                </tr>`;
+            }
+        }
+        
+        // C. DML - 200 PCs Model
+        if (effect.dml || effect.dml_200pcs) {
+            const dml200 = effect.dml || effect.dml_200pcs;
+            const dml200Tstat = dml200.theta / dml200.se;
+            const reduction200 = effect.reduction || ((1 - Math.abs(dml200.theta) / Math.abs(naive.theta)) * 100).toFixed(1);
+            
+            html += `<tr style="border-bottom: 1px solid #444;">
+                <td style="padding: 8px; font-weight: bold;">DML - 200 PCs</td>
+                <td style="text-align: center; padding: 8px;">${dml200.theta.toFixed(3)}</td>
+                <td style="text-align: center; padding: 8px;">${dml200.se.toFixed(3)}</td>
+                <td style="text-align: center; padding: 8px;">${dml200Tstat.toFixed(2)}</td>
+                <td style="text-align: center; padding: 8px;">${formatPValue(dml200.pval)}</td>
+                <td style="text-align: center; padding: 8px;">[${dml200.ci_lower.toFixed(3)}, ${dml200.ci_upper.toFixed(3)}]</td>
+                <td style="text-align: center; padding: 8px; color: #ff9800;">${reduction200}%</td>
+            </tr>`;
+            
+            // Add model statistics
+            if (dml200.r2_y !== undefined || dml200.r2_x !== undefined) {
+                html += `<tr style="border-bottom: 1px solid #444;">
+                    <td colspan="7" style="padding: 4px 8px; font-size: 11px; color: #999;">
+                        <div>Cross-validated R²: Y = ${dml200.r2_y?.toFixed(3) || 'N/A'}, X = ${dml200.r2_x?.toFixed(3) || 'N/A'}</div>
+                        ${dml200.r2_y_full !== undefined ? `<div>Full dataset R²: Y = ${dml200.r2_y_full?.toFixed(3) || 'N/A'}, X = ${dml200.r2_x_full?.toFixed(3) || 'N/A'}</div>` : ''}
+                        <div>C = ${dml200.corr_resid?.toFixed(3) || 'N/A'}, G = ${dml200.corr_pred?.toFixed(3) || 'N/A'}</div>
+                    </td>
+                </tr>`;
+            }
+        }
+        
+        // D. DML - 6 PCs Models (by each method)
+        if (effect.dml_by_method && Object.keys(effect.dml_by_method).length > 0) {
+            // Display each PC selection method
+            const methods = ['xgboost', 'lasso', 'ridge', 'mi'];
+            const methodNames = {
+                'xgboost': 'XGBoost',
+                'lasso': 'Lasso',
+                'ridge': 'Ridge',
+                'mi': 'Mutual Info'
+            };
+            
+            for (const method of methods) {
+                if (effect.dml_by_method[method]) {
+                    const dmlMethod = effect.dml_by_method[method];
+                    const dmlMethodTstat = dmlMethod.theta / dmlMethod.se;
+                    const reductionMethod = ((1 - Math.abs(dmlMethod.theta) / Math.abs(naive.theta)) * 100).toFixed(1);
+                    
+                    html += `<tr style="border-bottom: 1px solid #444;">
+                        <td style="padding: 8px; font-weight: bold;">DML - 6 PCs (${methodNames[method]})</td>
+                        <td style="text-align: center; padding: 8px;">${dmlMethod.theta.toFixed(3)}</td>
+                        <td style="text-align: center; padding: 8px;">${dmlMethod.se.toFixed(3)}</td>
+                        <td style="text-align: center; padding: 8px;">${dmlMethodTstat.toFixed(2)}</td>
+                        <td style="text-align: center; padding: 8px;">${formatPValue(dmlMethod.pval)}</td>
+                        <td style="text-align: center; padding: 8px;">[${dmlMethod.ci_lower.toFixed(3)}, ${dmlMethod.ci_upper.toFixed(3)}]</td>
+                        <td style="text-align: center; padding: 8px; color: #ff9800;">${reductionMethod}%</td>
+                    </tr>`;
+                    
+                    // Add model statistics
+                    html += `<tr style="border-bottom: 1px solid #444;">
+                        <td colspan="7" style="padding: 4px 8px; font-size: 11px; color: #999;">
+                            <div>Cross-validated R²: Y = ${dmlMethod.r2_y?.toFixed(3) || 'N/A'}, X = ${dmlMethod.r2_x?.toFixed(3) || 'N/A'}</div>
+                            ${dmlMethod.r2_y_full !== undefined ? `<div>Full dataset R²: Y = ${dmlMethod.r2_y_full?.toFixed(3) || 'N/A'}, X = ${dmlMethod.r2_x_full?.toFixed(3) || 'N/A'}</div>` : ''}
+                            <div>C = ${dmlMethod.corr_resid?.toFixed(3) || 'N/A'}, G = ${dmlMethod.corr_pred?.toFixed(3) || 'N/A'}</div>
+                            <div>PCs Used: ${dmlMethod.pcs_used || 'N/A'}</div>
+                        </td>
+                    </tr>`;
+                }
+            }
+            
+            // Add PC selection summary at the bottom
+            html += `<tr style="border-top: 2px solid #666;">
+                <td colspan="7" style="padding: 12px 8px; font-size: 12px; background-color: #2a2a2a;">
+                    <div style="font-weight: bold; margin-bottom: 8px; color: #ffffff;">PC Selection Methods Summary:</div>`;
+            
+            // Get primary method from config
+            const primaryMethod = {{ config.analysis.dml_primary_pc_method | tojson }};
+            
+            // Show what each method selected
+            const methodOrder = ['xgboost', 'lasso', 'ridge', 'mi'];
+            for (const method of methodOrder) {
+                const pcs = getTopPCsByMethod(method);
+                if (pcs) {
+                    const isPrimary = method === primaryMethod;
+                    html += `<div style="margin: 4px 0; ${isPrimary ? 'color: #4CAF50; font-weight: bold;' : 'color: #999;'}">
+                        ${methodNames[method] || method}: ${pcs} ${isPrimary ? '(PRIMARY METHOD)' : ''}
+                    </div>`;
+                }
+            }
+            
+            html += `</td></tr>`;
+        } else if (effect.dml_6pcs) {
+            // Fallback for backward compatibility
+            const dml6 = effect.dml_6pcs;
+            const dml6Tstat = dml6.theta / dml6.se;
+            const reduction6 = ((1 - Math.abs(dml6.theta) / Math.abs(naive.theta)) * 100).toFixed(1);
+            
+            html += `<tr style="border-bottom: 1px solid #444;">
+                <td style="padding: 8px; font-weight: bold;">DML - 6 PCs</td>
+                <td style="text-align: center; padding: 8px;">${dml6.theta.toFixed(3)}</td>
+                <td style="text-align: center; padding: 8px;">${dml6.se.toFixed(3)}</td>
+                <td style="text-align: center; padding: 8px;">${dml6Tstat.toFixed(2)}</td>
+                <td style="text-align: center; padding: 8px;">${formatPValue(dml6.pval)}</td>
+                <td style="text-align: center; padding: 8px;">[${dml6.ci_lower.toFixed(3)}, ${dml6.ci_upper.toFixed(3)}]</td>
+                <td style="text-align: center; padding: 8px; color: #ff9800;">${reduction6}%</td>
+            </tr>`;
+            
+            // Add model statistics
+            html += `<tr style="border-bottom: 1px solid #444;">
+                <td colspan="7" style="padding: 4px 8px; font-size: 11px; color: #999;">
+                    <div>Cross-validated R²: Y = ${dml6.r2_y?.toFixed(3) || 'N/A'}, X = ${dml6.r2_x?.toFixed(3) || 'N/A'}</div>
+                    ${dml6.r2_y_full !== undefined ? `<div>Full dataset R²: Y = ${dml6.r2_y_full?.toFixed(3) || 'N/A'}, X = ${dml6.r2_x_full?.toFixed(3) || 'N/A'}</div>` : ''}
+                    <div>C = ${dml6.corr_resid?.toFixed(3) || 'N/A'}, G = ${dml6.corr_pred?.toFixed(3) || 'N/A'}</div>
+                    <div>PCs Used: ${dml6.pcs_used || 'N/A'}</div>
+                </td>
+            </tr>`;
+        }
+        
+        html += '</tbody></table>';
+        html += '</div>';
+    });
+    
+    content.innerHTML = html;
+}
+
+function formatPValue(pval) {
+    if (pval < 0.00001) return '<0.00001';
+    return pval.toFixed(5);
+}

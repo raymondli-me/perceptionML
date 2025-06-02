@@ -25,9 +25,29 @@ class DataLoader:
         print(f"Loading data from {data_path}...")
         self.data = pd.read_csv(data_path)
         
+        # Generate ID column if needed
+        if hasattr(self.config.data, 'generate_id') and self.config.data.generate_id:
+            self.data[self.config.data.id_column] = range(len(self.data))
+            print(f"✓ Generated ID column: {self.config.data.id_column}")
+        
+        # Generate synthetic outcomes if needed
+        for outcome in self.config.data.outcomes:
+            if hasattr(outcome, 'synthetic') and outcome.synthetic:
+                if outcome.name == 'text_length':
+                    self.data['text_length'] = self.data[self.config.data.text_column].astype(str).str.len()
+                elif outcome.name == 'sentence_count':
+                    self.data['sentence_count'] = self.data[self.config.data.text_column].astype(str).str.count('[.!?]+')
+                print(f"✓ Generated synthetic outcome: {outcome.name}")
+        
         # Validate required columns
-        required_cols = [self.config.data.text_column, self.config.data.id_column]
-        required_cols.extend([o.name for o in self.config.data.outcomes])
+        required_cols = [self.config.data.text_column]
+        # Only check for ID column if it's not being generated
+        if not (hasattr(self.config.data, 'generate_id') and self.config.data.generate_id):
+            required_cols.append(self.config.data.id_column)
+        # Only check for non-synthetic outcomes
+        for outcome in self.config.data.outcomes:
+            if not (hasattr(outcome, 'synthetic') and outcome.synthetic):
+                required_cols.append(outcome.name)
         
         missing_cols = set(required_cols) - set(self.data.columns)
         if missing_cols:
@@ -84,9 +104,19 @@ class DataLoader:
     def _detect_outcome_modes(self) -> None:
         """Auto-detect appropriate mode for outcome variables."""
         if not self.config.analysis.outcome_mode_detection:
+            # If detection is disabled, show what modes are set
+            print("\n" + "="*50)
+            print("🎯 OUTCOME MODE (MANUALLY SET)")
+            print("="*50)
+            for outcome in self.config.data.outcomes[:2]:
+                mode = getattr(outcome, 'mode', 'continuous')
+                print(f"  {outcome.name}: {mode}")
+            print("="*50)
             return
             
-        print("\nDetecting outcome modes...")
+        print("\n" + "="*50)
+        print("🎯 OUTCOME MODE DETECTION")
+        print("="*50)
         for outcome in self.config.data.outcomes:
             if outcome.mode:  # Skip if manually set
                 print(f"  {outcome.name}: '{outcome.mode}' (manually set)")
@@ -102,6 +132,14 @@ class DataLoader:
             else:
                 outcome.mode = 'continuous'
                 print(f"  {outcome.name}: 'continuous' (default)")
+        
+        # Print summary
+        print("\n📊 MODE SUMMARY:")
+        for outcome in self.config.data.outcomes[:2]:
+            mode = getattr(outcome, 'mode', 'continuous')
+            emoji = "🔵" if mode == 'zero_presence' else "🟢"
+            print(f"  {emoji} {outcome.name}: {mode.upper()}")
+        print("="*50)
     
     def detect_outcome_mode(self, values: np.ndarray, outcome_config: OutcomeConfig) -> str:
         """Auto-detect appropriate mode for outcome variable."""
@@ -135,6 +173,11 @@ class DataLoader:
         if outcome_config.type == "categorical" and 0 in unique_values:
             print(f"      → Zero-presence mode (categorical with zero)")
             return "zero_presence"
+        
+        # Warning if using continuous mode with significant zeros
+        if zero_fraction > 0.3:  # 30% or more zeros
+            print(f"      ⚠️  WARNING: {zero_fraction:.1%} zeros detected but using continuous mode!")
+            print(f"         Consider using --outcome-mode zero_presence for better visualization")
         
         return "continuous"
     
@@ -350,43 +393,87 @@ class DataLoader:
         self.original_data = self.data.copy()
         original_embeddings = self.embeddings.copy() if self.embeddings is not None else None
         
-        # Try stratified sampling based on outcomes
-        stratify_col = None
-        for outcome in self.config.data.outcomes:
-            if outcome.type == 'categorical':
-                stratify_col = outcome.name
-                break
-            elif outcome.type in ['continuous', 'ordinal']:
-                # Create bins for stratification
-                stratify_col = f'{outcome.name}_bin'
-                self.data[stratify_col] = pd.qcut(self.data[outcome.name], q=10, labels=False, duplicates='drop')
-                break
+        # Get sampling method from config (default to stratified)
+        sampling_method = getattr(self.config.data, 'sampling_method', 'stratified')
         
-        if stratify_col:
-            print(f"  Using stratified sampling on: {stratify_col}")
-            # Use train_test_split for stratified sampling
-            _, sampled_data, _, sample_indices = train_test_split(
-                self.data, 
-                np.arange(len(self.data)),
-                test_size=sample_size/len(self.data),
-                stratify=self.data[stratify_col],
-                random_state=sample_seed
-            )
-            self.sample_indices = sample_indices
-            self.data = sampled_data.reset_index(drop=True)
-            
-            # Remove temporary bin column if created
-            if stratify_col.endswith('_bin'):
-                self.data.drop(columns=[stratify_col], inplace=True)
-                
-            sampling_method = 'stratified'
-        else:
+        if sampling_method == 'random':
             print("  Using random sampling")
+            print("  💡 To use stratified sampling: add --sampling-method stratified")
+            
             # Random sampling
             np.random.seed(sample_seed)
             self.sample_indices = np.random.choice(len(self.data), size=sample_size, replace=False)
             self.data = self.data.iloc[self.sample_indices].reset_index(drop=True)
-            sampling_method = 'random'
+            stratify_col = None
+        else:
+            # Stratified sampling
+            # Check if specific stratify_by column is specified
+            stratify_col = getattr(self.config.data, 'stratify_by', None)
+            
+            if stratify_col:
+                # Use specified column
+                if stratify_col not in self.data.columns:
+                    raise ValueError(f"Stratify column '{stratify_col}' not found in data")
+                    
+                # Check if we need to bin continuous columns for stratification
+                if self.data[stratify_col].dtype in [np.float64, np.float32, np.int64, np.int32]:
+                    # For continuous columns, create bins
+                    original_col = stratify_col
+                    stratify_col = f'{original_col}_bin'
+                    self.data[stratify_col] = pd.qcut(self.data[original_col], q=10, labels=False, duplicates='drop')
+                    print(f"  Using stratified sampling on: {original_col} (user-specified, binned for stratification)")
+                else:
+                    print(f"  Using stratified sampling on: {stratify_col} (user-specified)")
+            else:
+                # Auto-select stratification column based on outcomes
+                # Prefer X variable (second outcome) over Y variable (first outcome) for DML
+                outcomes_to_check = []
+                if len(self.config.data.outcomes) >= 2:
+                    # Check X variable first (index 1), then Y variable (index 0)
+                    outcomes_to_check = [self.config.data.outcomes[1], self.config.data.outcomes[0]]
+                else:
+                    outcomes_to_check = self.config.data.outcomes
+                
+                for outcome in outcomes_to_check:
+                    if outcome.type == 'categorical':
+                        stratify_col = outcome.name
+                        break
+                    elif outcome.type in ['continuous', 'ordinal']:
+                        # Create bins for stratification
+                        stratify_col = f'{outcome.name}_bin'
+                        self.data[stratify_col] = pd.qcut(self.data[outcome.name], q=10, labels=False, duplicates='drop')
+                        break
+                
+                if stratify_col:
+                    print(f"  Using stratified sampling on: {stratify_col} (auto-selected)")
+                else:
+                    print("  No suitable stratification column found, falling back to random sampling")
+                    stratify_col = None
+            
+            if stratify_col:
+                print(f"  💡 To use random sampling: add --sampling-method random")
+                print(f"  💡 To stratify by a different column: add --stratify-by column_name")
+                
+                # Use train_test_split for stratified sampling
+                _, sampled_data, _, sample_indices = train_test_split(
+                    self.data, 
+                    np.arange(len(self.data)),
+                    test_size=sample_size/len(self.data),
+                    stratify=self.data[stratify_col],
+                    random_state=sample_seed
+                )
+                self.sample_indices = sample_indices
+                self.data = sampled_data.reset_index(drop=True)
+                
+                # Remove temporary bin column if created
+                if stratify_col and stratify_col.endswith('_bin'):
+                    self.data.drop(columns=[stratify_col], inplace=True)
+            else:
+                # Fall back to random if no stratification possible
+                sampling_method = 'random'
+                np.random.seed(sample_seed)
+                self.sample_indices = np.random.choice(len(self.data), size=sample_size, replace=False)
+                self.data = self.data.iloc[self.sample_indices].reset_index(drop=True)
         
         # Sample embeddings if they exist
         if self.embeddings is not None:

@@ -1,0 +1,58 @@
+pipeline:
+  name: "Anger Detection Zero-Presence Analysis"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+data:
+  text_column: "text"
+  id_column: "text_id"
+  outcomes:
+    - name: "human_sum_score"
+      display_name: "Human Anger"
+      type: "continuous"
+      mode: "zero_presence"  # Force zero-presence mode
+      range: [0, 100]  # Add range for continuous outcome
+    - name: "gpt_sum_score"
+      display_name: "GPT Anger"
+      type: "continuous"
+      mode: "zero_presence"  # Force zero-presence mode
+      range: [0, 100]  # Add range for continuous outcome
+  sample_size: 10000
+  sample_seed: 42
+  control_variables:
+    - name: "num_raters"
+      display_name: "Number of Raters"
+
+analysis:
+  # Auto-mode for optimal parameters
+  auto_mode: true  # Now defaults to "many topics" settings
+  super_auto_mode: false
+  
+  # Disable automatic mode detection since we're forcing zero-presence
+  outcome_mode_detection: false
+  
+  # Clustering parameters (will auto-select to many topics: 20/3)
+  hdbscan_min_cluster_size: null
+  hdbscan_min_samples: null
+  
+  # UMAP parameters (will auto-select to many topics: 10/0.0)
+  umap_n_neighbors: null
+  umap_min_dist: null
+  
+  # DML parameters
+  dml_n_folds: 5
+  dml_pc_selection_methods: ["xgboost", "lasso", "ridge", "mi"]
+  dml_primary_pc_method: "xgboost"
+  
+  # XGBoost parameters
+  xgb_n_estimators: 100
+  xgb_max_depth: 5
+  
+  # Batch size for embeddings
+  batch_size: 512
+
+visualization:
+  title: "Anger Detection: Human vs GPT (Zero-Presence Mode)"
+  default_opacity: 0.8
+  essay_font_size: 14
+
+output_dir: "output"
