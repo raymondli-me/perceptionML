@@ -164,28 +164,6 @@ PerceptionML employs the TRACES methodology to reveal patterns at multiple resol
 5. **Explore**: Navigate the data landscape through interactive 3D visualization
 6. **Synthesize**: Interpret the statistical patterns to understand perception drivers
 
-## Publishing to PyPI
-
-To publish a new version:
-
-```bash
-# 1. Update version in pyproject.toml
-# 2. Build the package
-python -m build
-
-# 3. Upload to TestPyPI first (optional)
-twine upload --repository testpypi dist/*
-
-# 4. Upload to PyPI
-twine upload dist/*
-```
-
-You'll need to configure your PyPI credentials:
-```bash
-# Create ~/.pypirc or use token authentication
-twine upload dist/* --username __token__ --password pypi-YOUR-TOKEN-HERE
-```
-
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
@@ -197,7 +175,7 @@ If you use PerceptionML in your research, please cite:
 ```bibtex
 @software{perceptionml2024,
   author = {Li, Raymond V.},
-  title = {PerceptionML: Discovering How Language Shapes Perception},
+  title = {PerceptionML: Discovering The Why In AI Perception},
   year = {2024},
   url = {https://github.com/raymondli-me/perceptionml}
 }
