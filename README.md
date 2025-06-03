@@ -1,118 +1,220 @@
-# perceptionML
+# PerceptionML
 
-A text embedding analysis pipeline for perception modeling and topic discovery.
+**Discover how language shapes perception through advanced text embedding analysis**
 
-## Features
+[![PyPI version](https://badge.fury.io/py/perceptionml.svg)](https://badge.fury.io/py/perceptionml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-- Generate text embeddings using state-of-the-art models (Sentence Transformers, OpenAI, etc.)
-- Dimensionality reduction with UMAP or PCA
-- Advanced clustering with HDBSCAN
-- Interactive HTML visualizations
-- Topic analysis and statistics
-- Support for zero-presence analysis and category comparisons
-- Multi-GPU support for large datasets
+## Vision
+
+PerceptionML bridges the gap between what people write and how it's perceived. By examining text at variable resolutions—from individual word choices to broad semantic themes—it reveals the hidden patterns that shape human and AI judgment.
+
+Whether you're studying social bias, analyzing customer feedback, or researching how AI interprets human writing, PerceptionML provides tools to explore perception at every scale:
+
+- 🔍 **Discover semantic topics** in large text corpora automatically
+- 📊 **Measure causal effects** of language patterns on outcomes
+- 🎯 **Identify which textual features** drive specific perceptions
+- 🌐 **Visualize the landscape** of your text data in interactive 3D
+
+## Key Features
+
+- **Zero-configuration analysis** - Just point to your CSV and go
+- **Multiple embedding models** - From fast MiniLM to powerful NVIDIA models
+- **Causal inference built-in** - DML (Double Machine Learning) analysis
+- **Interactive visualizations** - Explore your data in 3D with rich tooltips
+- **Flexible outcome analysis** - Binary, continuous, or zero-presence modes
+- **Production ready** - Multi-GPU support, automatic batching, progress tracking
 
 ## Installation
+
+### From PyPI (Recommended)
 
 ```bash
 pip install perceptionml
 ```
 
+### From Source
+
+```bash
+git clone https://github.com/raymondli-me/perceptionml.git
+cd perceptionml
+pip install -e .
+```
+
+### System Requirements
+
+- Python 3.8 or higher
+- 4GB+ RAM for typical datasets
+- CUDA-capable GPU recommended for faster embeddings (but not required)
+
 ## Quick Start
 
-### Simplest Usage - No Configuration Needed!
-
-Just point to your CSV file with text:
+### 1. Simplest Usage - Just Add Data!
 
 ```bash
 perceptionml --data your_data.csv
 ```
 
-perceptionML will automatically:
-- Detect your text column (longest text)
-- Find or create an ID column
-- Identify numeric columns as outcomes
-- Generate synthetic outcomes if no numeric columns exist
-- Use optimal settings for finding many detailed topics
+PerceptionML automatically:
+- Detects your text column
+- Finds or creates ID columns
+- Identifies outcome variables
+- Optimizes all parameters
 
-### What Your Data Should Look Like
+### 2. Model Comparison Example
 
-Minimal CSV (just text):
-```csv
-text
-"This is my first document about..."
-"Another document with different content..."
-```
-
-CSV with outcomes to analyze:
-```csv
-id,text,sentiment_score,rating
-1,"Great product, highly recommend!",0.95,5
-2,"Terrible experience, would not buy again",-0.87,1
-```
-
-### Basic Options
+Compare fast vs. high-quality embeddings:
 
 ```bash
-# Specify output file name
-perceptionml --data your_data.csv --output my_analysis.html
+# Fast analysis (384-dim embeddings)
+perceptionml --data reviews.csv \
+  --embedding-model sentence-transformers/all-MiniLM-L6-v2 \
+  --output fast_analysis.html
 
-# Sample large datasets
-perceptionml --data your_data.csv --sample-size 10000
-
-# Use specific embedding model
-perceptionml --data your_data.csv --embedding-model nvidia/NV-Embed-v2
-
-# Export results to CSV
-perceptionml --data your_data.csv --export-csv
+# Deep analysis (4096-dim embeddings)  
+perceptionml --data reviews.csv \
+  --embedding-model nvidia/NV-Embed-v2 \
+  --output deep_analysis.html
 ```
 
-### Advanced Usage
+### 3. Real-World Examples
 
-For more control, you can:
+#### Analyzing AI vs Human Ratings
+```bash
+perceptionml --data essay_scores.csv \
+  --y-var ai_rating \
+  --x-var human_rating \
+  --outcome-mode continuous \
+  --sample-size 10000
+```
 
-1. **Use configuration files** for complex setups
-2. **Adjust clustering granularity**:
-   ```bash
-   # Many small topics (default)
-   perceptionml --data your_data.csv --auto-cluster many
-   
-   # Medium-sized topics  
-   perceptionml --data your_data.csv --auto-cluster medium
-   
-   # Few large topics
-   perceptionml --data your_data.csv --auto-cluster few
-   ```
+#### Finding What Makes Text "Angry"
+```bash
+perceptionml --data comments.csv \
+  --y-var anger_score \
+  --outcome-mode zero_presence \
+  --auto-cluster many
+```
 
-3. **Override specific parameters**:
-   ```bash
-   perceptionml --data your_data.csv \
-       --min-cluster-size 30 \
-       --umap-neighbors 15
-   ```
+See `examples/quickstart.sh` for more examples.
 
-## Understanding the Output
+## Understanding Your Results
 
-The HTML visualization shows:
-- **3D scatter plot** of your texts, clustered by topic
-- **Topic keywords** extracted from each cluster
-- **Statistics** about outcomes in different regions
-- **Interactive controls** to explore the data
+The interactive HTML output provides insights at multiple resolutions:
 
-Click on points to read the original texts. Use the controls to filter by outcome values or focus on specific topics.
+1. **3D Landscape**: Navigate your text data in semantic space, with each point representing a document
+2. **Topic Analysis**: Zoom into clusters to see defining keywords and statistics
+3. **Causal Effects**: Understand which semantic patterns drive outcomes at different scales
+4. **Feature Importance**: Identify the principal variations that matter most
+5. **Interactive Exploration**: Drill down from patterns to individual texts
+6. **Statistical Synthesis**: Comprehensive metrics help you move from observation to understanding
 
-## Requirements
+## Advanced Usage
 
-- Python 3.8+
-- CUDA-capable GPU recommended for faster embedding generation
-- 4GB+ RAM for typical datasets
+### Configuration Files
 
-## Support
+For complex analyses, use YAML configuration:
 
-- Documentation: [https://github.com/raymondli/perceptionml](https://github.com/raymondli/perceptionml)
-- Issues: [https://github.com/raymondli/perceptionml/issues](https://github.com/raymondli/perceptionml/issues)
-- Author: Raymond V. Li (raymond@raymondli.me)
+```yaml
+pipeline:
+  name: "Customer Feedback Analysis"
+  embedding_model: "nvidia/NV-Embed-v2"
+
+data:
+  text_column: "review_text"
+  outcomes:
+    - name: "satisfaction"
+      type: "continuous"
+      range: [1, 5]
+
+analysis:
+  pca_components: 200
+  hdbscan_min_cluster_size: 30
+```
+
+Run with:
+```bash
+perceptionml --config config.yaml --data reviews.csv
+```
+
+### Programmatic Usage
+
+```python
+from pipeline.cli import TextEmbeddingPipeline
+
+# Initialize pipeline
+pipeline = TextEmbeddingPipeline(config_path="config.yaml")
+
+# Run analysis
+output_path = pipeline.run(
+    data_path="data.csv",
+    output_name="analysis.html"
+)
+```
+
+## How It Works: The TRACES Framework
+
+PerceptionML employs the TRACES methodology to reveal patterns at multiple resolutions:
+
+1. **Transform**: Convert text to high-dimensional embeddings using state-of-the-art models
+2. **Reduce**: Apply dimensionality reduction to find the most meaningful variations
+3. **Analyze**: Measure causal effects using Double Machine Learning (DML)
+4. **Cluster**: Discover semantic topics with adaptive HDBSCAN clustering
+5. **Explore**: Navigate the data landscape through interactive 3D visualization
+6. **Synthesize**: Interpret the statistical patterns to understand perception drivers
+
+## Publishing to PyPI
+
+To publish a new version:
+
+```bash
+# 1. Update version in pyproject.toml
+# 2. Build the package
+python -m build
+
+# 3. Upload to TestPyPI first (optional)
+twine upload --repository testpypi dist/*
+
+# 4. Upload to PyPI
+twine upload dist/*
+```
+
+You'll need to configure your PyPI credentials:
+```bash
+# Create ~/.pypirc or use token authentication
+twine upload dist/* --username __token__ --password pypi-YOUR-TOKEN-HERE
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## Citation
+
+If you use PerceptionML in your research, please cite:
+
+```bibtex
+@software{perceptionml2024,
+  author = {Li, Raymond V.},
+  title = {PerceptionML: Discovering How Language Shapes Perception},
+  year = {2024},
+  url = {https://github.com/raymondli-me/perceptionml}
+}
+```
 
 ## License
 
-See LICENSE file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- 📧 Email: raymond@raymondli.me
+- 🐛 Issues: [GitHub Issues](https://github.com/raymondli-me/perceptionml/issues)
+- 📖 Docs: [Full Documentation](https://perceptionml.readthedocs.io) (coming soon)
+
+---
+
+Built with ❤️ for researchers, data scientists, and anyone curious about how language shapes our world.
+
+*PerceptionML: Exploring perception at variable resolutions.*
