@@ -227,4 +227,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 Built with ❤️ for researchers, data scientists, and anyone curious about how language shapes our world.
 
-*PerceptionML: Exploring perception at variable resolutions.*
+*PerceptionML: Understanding the why in AI perception.*
