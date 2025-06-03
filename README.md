@@ -67,36 +67,68 @@ PerceptionML automatically:
 Compare fast vs. high-quality embeddings:
 
 ```bash
-# Fast analysis (384-dim embeddings)
-perceptionml --data reviews.csv \
-  --embedding-model sentence-transformers/all-MiniLM-L6-v2 \
-  --output fast_analysis.html
 
-# Deep analysis (4096-dim embeddings)  
-perceptionml --data reviews.csv \
-  --embedding-model nvidia/NV-Embed-v2 \
-  --output deep_analysis.html
+# 384-dim embeddings
+perceptionml --data anger_family.csv \
+       --y-var gpt_sum_score \
+       --x-var human_sum_score \
+       --control-vars num_raters \
+       --embedding-model sentence-transformers/all-MiniLM-L6-v2 \
+       --num-gpus 4 \
+       --batch-size 32 \
+       --sample-size 10000 \
+       --auto-cluster descriptions \
+       --outcome-mode zero_presence \
+       --stratify-by human_sum_score \
+       --output minilm_reddit_analysis.html
+
+
+# 4096-dim embeddings
+perceptionml --data anger_family.csv \
+       --y-var gpt_sum_score \
+       --x-var human_sum_score \
+       --control-vars num_raters \
+       --embedding-model nvidia/NV-Embed-v2 \
+       --num-gpus 4 \
+       --batch-size 8 \
+       --sample-size 10000 \
+       --auto-cluster descriptions \
+       --outcome-mode zero_presence \
+       --stratify-by human_sum_score \
+       --output nvidia_reddit_analysis.html
+
 ```
 
 ### 3. Real-World Examples
 
-#### Analyzing AI vs Human Ratings
+#### Social Class Perception (see National Child Development Study)
 ```bash
-perceptionml --data essay_scores.csv \
-  --y-var ai_rating \
-  --x-var human_rating \
-  --outcome-mode continuous \
-  --sample-size 10000
-```
+perceptionml --data essay_analysis_data.csv \
+       --y-var ai_rating \
+       --x-var social_class \
+       --embedding-model sentence-transformers/all-MiniLM-L6-v2 \
+       --num-gpus 4 \
+       --batch-size 32 \
+       --sample-size 10000 \
+       --auto-cluster descriptions \
+       --outcome-mode continuous \
+       --stratify-by social_class \
+       --output minilm_social_class_analysis.html
 
-#### Finding What Makes Text "Angry"
-```bash
-perceptionml --data comments.csv \
-  --y-var anger_score \
-  --outcome-mode zero_presence \
-  --auto-cluster many
-```
+perceptionml --data essay_analysis_data.csv \
+       --y-var ai_rating \
+       --x-var social_class \
+       --embedding-model nvidia/NV-Embed-v2 \
+       --num-gpus 4 \
+       --batch-size 8 \
+       --sample-size 10000 \
+       --auto-cluster descriptions \
+       --outcome-mode continuous \
+       --stratify-by social_class \
+       --output nvidia_social_class_analysis.html
 
+
+```
 See `examples/quickstart.sh` for more examples.
 
 ## Understanding Your Results
