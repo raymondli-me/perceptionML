@@ -285,20 +285,16 @@ results = analysis.run(
 - [API Reference](docs/api_reference.md)
 - [Statistical Methods](docs/methods.md)
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md).
-
 ## 📄 Citation
 
 If you use PerceptionML in your research:
 
 ```bibtex
 @software{perceptionML,
-  title = {PerceptionML: Text Perception Analysis using DML-LME},
-  author = {Your Name},
-  year = {2024},
-  url = {https://github.com/yourusername/perceptionML}
+  title = {PerceptionML: Text Perception Analysis using Double Machine Learning},
+  author = {Raymond Li},
+  year = {2025},
+  url = {https://github.com/raymondli-me/perceptionML}
 }
 ```
 
