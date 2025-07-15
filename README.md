@@ -1,230 +1,313 @@
 # PerceptionML
 
-**Discover how language shapes perception through advanced text embedding analysis**
+**Analyze text perception using Double Machine Learning with Language Model Embeddings**
 
-[![PyPI version](https://badge.fury.io/py/perceptionml.svg)](https://badge.fury.io/py/perceptionml)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Vision
+## 🚀 Two Modes for Different Needs
 
-PerceptionML bridges the gap between what people write and how it's perceived. By examining text at variable resolutions—from individual word choices to broad semantic themes—it reveals the hidden patterns that shape human and AI judgment.
+### Basic Mode (Recommended for Most Users)
+- **Simple**: One command to reproduce paper results
+- **Fast**: Optimized for MiniLM embeddings
+- **Reproducible**: Fixed random seeds ensure consistent results
+- **Complete**: All analyses from the paper in one pipeline
 
-Whether you're studying social bias, analyzing customer feedback, or researching how AI interprets human writing, PerceptionML provides tools to explore perception at every scale:
+### Advanced Mode  
+- **Flexible**: Multiple embedding models and configurations
+- **Powerful**: GPU acceleration and batch processing
+- **Customizable**: YAML-based configuration system
+- **Visual**: Interactive 3D visualizations
 
-- 🔍 **Discover semantic topics** in large text corpora automatically
-- 📊 **Measure causal effects** of language patterns on outcomes
-- 🎯 **Identify which textual features** drive specific perceptions
-- 🌐 **Visualize the landscape** of your text data in interactive 3D
-
-## Key Features
-
-- **Zero-configuration analysis** - Just point to your CSV and go
-- **Multiple embedding models** - From fast MiniLM to powerful NVIDIA models
-- **Causal inference built-in** - DML (Double Machine Learning) analysis
-- **Interactive visualizations** - Explore your data in 3D with rich tooltips
-- **Flexible outcome analysis** - Binary, continuous, or zero-presence modes
-- **Production ready** - Multi-GPU support, automatic batching, progress tracking
-
-## Installation
-
-### From PyPI (Recommended)
+## 📦 Installation
 
 ```bash
-pip install perceptionml
-```
+# Clone repository
+git clone https://github.com/yourusername/perceptionML.git
+cd perceptionML
 
-### From Source
+# Install dependencies
+pip install -r requirements.txt
 
-```bash
-git clone https://github.com/raymondli-me/perceptionml.git
-cd perceptionml
+# Install package
 pip install -e .
 ```
 
-### System Requirements
+## 🎯 Quick Start
 
-- Python 3.8 or higher
-- 4GB+ RAM for typical datasets
-- CUDA-capable GPU recommended for faster embeddings (but not required)
-
-## Quick Start
-
-### 1. Simplest Usage - Just Add Data!
+### Basic Mode - Command Line
 
 ```bash
-perceptionml --data your_data.csv
+# Using precomputed embeddings
+python -m perceptionML basic \
+    --embeddings embeddings.csv \
+    --treatment social_class \
+    --outcome ai_rating
+
+# Using raw text
+python -m perceptionML basic \
+    --data data.csv \
+    --treatment X \
+    --outcome Y \
+    --text text_column
 ```
 
-PerceptionML automatically:
-- Detects your text column
-- Finds or creates ID columns
-- Identifies outcome variables
-- Optimizes all parameters
-
-### 2. Model Comparison Example
-
-Compare fast vs. high-quality embeddings:
-
-```bash
-
-# 384-dim embeddings
-perceptionml --data anger_family.csv \
-       --y-var gpt_sum_score \
-       --x-var human_sum_score \
-       --control-vars num_raters \
-       --embedding-model sentence-transformers/all-MiniLM-L6-v2 \
-       --num-gpus 4 \
-       --batch-size 32 \
-       --sample-size 10000 \
-       --auto-cluster descriptions \
-       --outcome-mode zero_presence \
-       --stratify-by human_sum_score \
-       --output minilm_reddit_analysis.html
-
-
-# 4096-dim embeddings
-perceptionml --data anger_family.csv \
-       --y-var gpt_sum_score \
-       --x-var human_sum_score \
-       --control-vars num_raters \
-       --embedding-model nvidia/NV-Embed-v2 \
-       --num-gpus 4 \
-       --batch-size 8 \
-       --sample-size 10000 \
-       --auto-cluster descriptions \
-       --outcome-mode zero_presence \
-       --stratify-by human_sum_score \
-       --output nvidia_reddit_analysis.html
-
-```
-
-### 3. Real-World Examples
-
-#### Social Class Perception (see National Child Development Study)
-```bash
-perceptionml --data essay_analysis_data.csv \
-       --y-var ai_rating \
-       --x-var social_class \
-       --embedding-model sentence-transformers/all-MiniLM-L6-v2 \
-       --num-gpus 4 \
-       --batch-size 32 \
-       --sample-size 10000 \
-       --auto-cluster descriptions \
-       --outcome-mode continuous \
-       --stratify-by social_class \
-       --output minilm_social_class_analysis.html
-
-perceptionml --data essay_analysis_data.csv \
-       --y-var ai_rating \
-       --x-var social_class \
-       --embedding-model nvidia/NV-Embed-v2 \
-       --num-gpus 4 \
-       --batch-size 8 \
-       --sample-size 10000 \
-       --auto-cluster descriptions \
-       --outcome-mode continuous \
-       --stratify-by social_class \
-       --output nvidia_social_class_analysis.html
-
-
-```
-See `examples/quickstart.sh` for more examples.
-
-## Understanding Your Results
-
-The interactive HTML output provides insights at multiple resolutions:
-
-1. **3D Landscape**: Navigate your text data in semantic space, with each point representing a document
-2. **Topic Analysis**: Zoom into clusters to see defining keywords and statistics
-3. **Causal Effects**: Understand which semantic patterns drive outcomes at different scales
-4. **Feature Importance**: Identify the principal variations that matter most
-5. **Interactive Exploration**: Drill down from patterns to individual texts
-6. **Statistical Synthesis**: Comprehensive metrics help you move from observation to understanding
-
-## Advanced Usage
-
-### Configuration Files
-
-For complex analyses, use YAML configuration:
-
-```yaml
-pipeline:
-  name: "Customer Feedback Analysis"
-  embedding_model: "nvidia/NV-Embed-v2"
-
-data:
-  text_column: "review_text"
-  outcomes:
-    - name: "satisfaction"
-      type: "continuous"
-      range: [1, 5]
-
-analysis:
-  pca_components: 200
-  hdbscan_min_cluster_size: 30
-```
-
-Run with:
-```bash
-perceptionml --config config.yaml --data reviews.csv
-```
-
-### Programmatic Usage
+### Basic Mode - Python API
 
 ```python
-from pipeline.cli import TextEmbeddingPipeline
+from perceptionML import BasicAnalysis
 
-# Initialize pipeline
-pipeline = TextEmbeddingPipeline(config_path="config.yaml")
-
-# Run analysis
-output_path = pipeline.run(
+# Initialize and run analysis
+analysis = BasicAnalysis()
+results = analysis.run(
     data_path="data.csv",
-    output_name="analysis.html"
+    treatment_col="X",
+    outcome_col="Y",
+    text_col="text"
 )
 ```
 
-## How It Works: The TRACES Framework
+### Basic Mode - R Interface
 
-PerceptionML employs the TRACES methodology to reveal patterns at multiple resolutions:
+```r
+# Save this as run_perceptionML.R
+library(reticulate)
 
-1. **Transform**: Convert text to high-dimensional embeddings using state-of-the-art models
-2. **Reduce**: Apply dimensionality reduction to find the most meaningful variations
-3. **Analyze**: Measure causal effects using Double Machine Learning (DML)
-4. **Cluster**: Discover semantic topics with adaptive HDBSCAN clustering
-5. **Explore**: Navigate the data landscape through interactive 3D visualization
-6. **Synthesize**: Interpret the statistical patterns to understand perception drivers
+# Import perceptionML
+perceptionML <- import("perceptionML")
 
-## Contributing
+# Create analysis object
+analysis <- perceptionML$BasicAnalysis(
+  n_pca_components = 200L,
+  n_top_features = 6L,
+  random_seed = 42L
+)
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+# Run analysis
+results <- analysis$run(
+  data_path = "data.csv",
+  treatment_col = "social_class",
+  outcome_col = "ai_rating",
+  text_col = "essay_text"
+)
 
-## Citation
+# Results are now in R as a data frame
+print(results)
+```
 
-If you use PerceptionML in your research, please cite:
+### Basic Mode - R Command Line Wrapper
+
+```r
+# Save this as perception_analysis.R
+#!/usr/bin/env Rscript
+
+# Simple R wrapper for command line usage
+args <- commandArgs(trailingOnly = TRUE)
+
+if (length(args) < 3) {
+  cat("Usage: Rscript perception_analysis.R <data.csv> <treatment> <outcome> [text_column]\n")
+  quit(status = 1)
+}
+
+# Run analysis using system call
+cmd <- sprintf(
+  "python -m perceptionML basic --data %s --treatment %s --outcome %s %s",
+  args[1], args[2], args[3],
+  ifelse(length(args) >= 4, paste("--text", args[4]), "")
+)
+
+system(cmd)
+```
+
+## 📊 Basic Mode Features
+
+### What You Get
+
+1. **Comprehensive Results Table** matching paper format:
+   - OLS baseline (no controls)
+   - OLS with full embeddings
+   - DML with XGBoost, Lasso, Ridge
+   - OLS/DML with PCA components
+   - OLS/DML with top selected features
+
+2. **Feature Selection Methods**:
+   - XGBoost importance
+   - Lasso (L1) coefficients
+   - Ridge (L2) coefficients  
+   - OLS coefficients
+   - Mutual Information
+
+3. **Complete Output**:
+   ```
+   results/
+   ├── results_table.csv          # Main results
+   ├── feature_selections.csv     # Selected features
+   ├── embeddings.csv            # Generated embeddings
+   ├── pca_components.csv        # PCA transformed data
+   ├── pca_variance_explained.csv # Variance explained
+   └── analysis_params.json      # For reproducibility
+   ```
+
+### Example: Reproducing Paper Results
+
+```bash
+# Download example data
+wget https://example.com/miniLM_embeddings.csv
+
+# Run analysis (bash script)
+bash run_minilm_analysis.sh
+
+# Or directly with Python
+python -m perceptionML basic \
+    --embeddings miniLM_embeddings.csv \
+    --treatment social_class \
+    --outcome ai_rating \
+    --pca-components 200 \
+    --top-features 6 \
+    --cv-folds 5 \
+    --random-seed 42
+```
+
+## 🔬 Advanced Mode
+
+For complex analyses with multiple embeddings and visualizations:
+
+### Command Line
+
+```bash
+# Create configuration
+python -m perceptionML advanced create-config
+
+# Run pipeline
+python -m perceptionML advanced \
+    --data essays.csv \
+    --y-var ai_rating \
+    --x-var social_class \
+    --embedding-model nvidia/NV-Embed-v2 \
+    --num-gpus 4 \
+    --auto-cluster
+```
+
+### Configuration File
+
+```yaml
+pipeline:
+  name: "Social Perception Analysis"
+  embedding_model: "nvidia/NV-Embed-v2"
+  
+analysis:
+  pca_components: 200
+  feature_selection:
+    - xgboost
+    - lasso
+    - ridge
+  
+output:
+  create_visualizations: true
+  export_embeddings: true
+```
+
+## 📚 Examples
+
+### Example 1: Simple Analysis
+
+```python
+from perceptionML import BasicAnalysis
+
+# Minimal example
+analysis = BasicAnalysis()
+results = analysis.run(
+    data_path="reviews.csv",
+    treatment_col="product_type",
+    outcome_col="rating",
+    text_col="review_text"
+)
+
+# Access results
+print(results[results['Model'] == 'DML'])
+```
+
+### Example 2: Custom Parameters
+
+```python
+# Custom analysis settings
+analysis = BasicAnalysis(
+    embedding_model="sentence-transformers/all-mpnet-base-v2",
+    n_pca_components=100,
+    n_top_features=10,
+    n_folds=10,
+    random_seed=123
+)
+
+results = analysis.run(
+    data_path="tweets.csv",
+    treatment_col="sentiment",
+    outcome_col="retweets",
+    text_col="tweet_text",
+    output_dir="tweet_analysis/"
+)
+```
+
+### Example 3: Working with Precomputed Embeddings
+
+```python
+# If you already have embeddings
+analysis = BasicAnalysis()
+results = analysis.run(
+    embeddings_path="embeddings.csv",
+    treatment_col="treatment",
+    outcome_col="outcome",
+    precomputed_embeddings=True
+)
+```
+
+## 🛠️ Methods Overview
+
+### Double Machine Learning (DML)
+- Estimates causal effects with high-dimensional controls
+- Uses cross-fitting to avoid overfitting
+- Provides robust standard errors
+
+### Embedding Models
+- **MiniLM**: Fast 384-dimensional embeddings (default)
+- **MPNet**: Higher quality 768-dimensional embeddings
+- **NV-Embed**: State-of-the-art 4096-dimensional embeddings (advanced mode)
+
+### Feature Selection
+- **Alternating selection**: Selects features predictive of both treatment and outcome
+- **Multiple methods**: Compare different selection approaches
+- **Top-k features**: Focus on most important dimensions
+
+## 📖 Documentation
+
+- [Basic Mode Guide](docs/basic_mode.md)
+- [Advanced Mode Guide](docs/advanced_mode.md)
+- [API Reference](docs/api_reference.md)
+- [Statistical Methods](docs/methods.md)
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md).
+
+## 📄 Citation
+
+If you use PerceptionML in your research:
 
 ```bibtex
-@software{perceptionml2024,
-  author = {Li, Raymond V.},
-  title = {PerceptionML: Discovering The Why In AI Perception},
+@software{perceptionML,
+  title = {PerceptionML: Text Perception Analysis using DML-LME},
+  author = {Your Name},
   year = {2024},
-  url = {https://github.com/raymondli-me/perceptionml}
+  url = {https://github.com/yourusername/perceptionML}
 }
 ```
 
-## License
+## 📝 License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
-## Support
+## 🙏 Acknowledgments
 
-- 📧 Email: raymond@raymondli.me
-- 🐛 Issues: [GitHub Issues](https://github.com/raymondli-me/perceptionml/issues)
-- 📖 Docs: [Full Documentation](https://perceptionml.readthedocs.io) (coming soon)
-
----
-
-Built with ❤️ for researchers, data scientists, and anyone curious about how language shapes our world.
-
-*PerceptionML: Understanding the why in AI perception.*
+- Double Machine Learning: Chernozhukov et al. (2018)
+- Sentence Transformers: Reimers & Gurevych (2019)
+- XGBoost, scikit-learn, and statsmodels communities

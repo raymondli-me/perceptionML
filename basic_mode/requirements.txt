@@ -1,0 +1,22 @@
+# PerceptionML BASIC MODE Requirements
+# Core dependencies for reproducible DML-LME analysis
+
+# Core scientific computing
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+
+# Machine learning
+scikit-learn>=1.0.0
+xgboost>=1.7.0
+
+# Embeddings
+sentence-transformers>=2.2.0
+torch>=1.9.0
+transformers>=4.20.0
+
+# Utilities
+tqdm>=4.60.0
+
+# Optional for R integration
+# rpy2>=3.4.0
